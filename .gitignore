@@ -1,6 +1,6 @@
 .DS_Store
-gearup-app/node_modules
-gearup-app/dist
+gpx_analyzer-app/node_modules
+gpx_analyzer-app/dist
 
 
 # local env files
