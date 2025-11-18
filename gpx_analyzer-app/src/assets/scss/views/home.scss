@@ -1,1 +1,34 @@
+@use '../libraries/gerillass/gerillass';
 
+#section-intro_banner {
+  .section-wrapper {
+    height: calc(100vh - 150px);
+    &:before {
+      content: "";
+      display: block;
+      @include gerillass.position(absolute);
+      z-index: 0;
+      background: #57C785;
+      background: linear-gradient(166deg, rgba(87, 199, 133, 0.4) 14%, rgba(237, 221, 83, 0.3) 100%);
+    }
+  }
+}
+
+#section-start {
+  .section-wrapper {
+    .flex-col {
+      overflow: hidden;
+      &:before {
+        content: '';
+        display: block;
+        @include gerillass.position(absolute);
+        z-index: 0;
+        background: #57c785;
+        background: linear-gradient(166deg, rgba(87, 199, 133, 0.6) 14%, rgba(237, 221, 83, 0.6) 100%);
+      }
+      * {
+        z-index: 10;
+      }
+    }
+  }
+}

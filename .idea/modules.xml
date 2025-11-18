@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/girovaganzo-gearup.iml" filepath="$PROJECT_DIR$/.idea/girovaganzo-gearup.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/girovaganzo-gpx_analyzer.iml" filepath="$PROJECT_DIR$/.idea/girovaganzo-gpx_analyzer.iml" />
     </modules>
   </component>
 </project>

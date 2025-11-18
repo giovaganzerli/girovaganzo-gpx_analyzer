@@ -1,7 +1,7 @@
 import { createApp } from 'vue'
+import './style.css'
 import App from './App.vue'
-import './registerServiceWorker'
 import router from './router'
-import store from './store'
+import p5vue from 'p5vue'
 
-createApp(App).use(store).use(router).mount('#app')
+createApp(App).use(router).use(p5vue).mount('#app')

@@ -1,42 +1,22 @@
 <template>
-    <div id="app" :class="'view-'+ currViewSlug">
-        <header id="header">
-            <nav>
-                <router-link to="/">Home</router-link> |
-                <router-link to="/about">About</router-link>
-            </nav>
-        </header>
+    <div id="app-container" :class="'view-'+ currViewSlug">
 
-        <router-view id="body"/>
+        <BGCanvas />
+        <Header />
+        <router-view id="app-body" class="app-body"/>
+        <Footer />
 
-        <footer id="footer"></footer>
     </div>
 </template>
 
-<style>
-/* FONTS */
-@import 'https://fonts.googleapis.com/css?family=Roboto:300,400,500,700,400italic';
-/* ASSETS */
+<style scoped>
 @import './assets/css/main.css';
 </style>
 
-<script>
-
-/* eslint-disable */
-
-import appLogo from './assets/images/logo.png';
-
-export default {
-    name: 'App',
-    data() {
-    },
-    watch: {
-        $route: function () {
-        }
-    },
-    created() {
-    },
-    methods: {}
-}
+<script setup>
+import p5 from "p5"
+import Header from "./components/Header.vue";
+import Footer from "./components/Footer.vue";
+import BGCanvas from "./components/BGCanvas.vue";
 
 </script>

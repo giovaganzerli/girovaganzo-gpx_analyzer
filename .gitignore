@@ -1,6 +1,9 @@
 .DS_Store
-gpx_analyzer-app/node_modules
-gpx_analyzer-app/dist
+_gpx_analyzer-app/node_modules
+_gpx_analyzer-app/dist
+_gpx_analyzer-app/package-lock.json
+_gpx_analyzer-proxy/node_modules
+_gpx_analyzer-proxy/package-lock.json
 
 
 # local env files
