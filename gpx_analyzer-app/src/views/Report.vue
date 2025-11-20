@@ -2,111 +2,90 @@
 
     <section id="section-form"
              class="w-full mt-[120px] mb-[30px] p-[20px]">
+
+        <div class="section-wrapper w-boxed p-[20px]">
+            <input
+                type="file"
+                accept=".gpx"
+                @change="handleGPXUpload"
+                class="block mb-5 text-sm text-gray-700 border border-gray-300 p-2 rounded-lg bg-white"
+            >
+            <!-- Titolo + Descrizione -->
+            <div class="w-full mb-5">
+                <p class="text-black text-4xl font-black leading-tight tracking-[-0.033em]">
+                    Analyzing: {{ gpxData.title }}</p>
+                <p class="text-[#499c65] text-base font-normal leading-normal"><b>A little briefing:</b> {{ gpxData.description }}</p>
+            </div>
+            <!-- Dati Percorso -->
+            <div class="w-[calc(100%+40px)] col-span-2 flex flex-col gap-8 mx-[-20px]">
+                <div class="h-full grid grid-cols-4 gap-4">
+                    <div class="flex flex-col gap-2 p-4 bg-white rounded-xl border border-gray-200">
+                        <span class="material-symbols-outlined text-[#499c65]">route</span>
+                        <p class="text-sm text-gray-600">Distance</p>
+                        <p class="text-2xl font-bold text-black">{{ gpxData.route.distance }} km</p>
+                    </div>
+                    <div class="flex flex-col gap-2 p-4 bg-white rounded-xl border border-gray-200">
+                        <span class="material-symbols-outlined text-[#499c65]">landscape</span>
+                        <p class="text-sm text-gray-600">Elevation (Gain/Loss)</p>
+                        <p class="text-2xl font-bold text-black">{{ gpxData.route.elevation.gain }} / {{ gpxData.route.elevation.loss }} m</p>
+                    </div>
+                    <div class="flex flex-col gap-2 p-4 bg-white rounded-xl border border-gray-200">
+                        <span class="material-symbols-outlined text-[#499c65]">vertical_align_bottom</span>
+                        <p class="text-sm text-gray-600">Altitude (min)</p>
+                        <p class="text-2xl font-bold text-black">{{ gpxData.route.altitude.min }} m</p>
+                    </div>
+                    <div class="flex flex-col gap-2 p-4 bg-white rounded-xl border border-gray-200">
+                        <span class="material-symbols-outlined text-[#499c65]">vertical_align_top</span>
+                        <p class="text-sm text-gray-600">Altitude (max)</p>
+                        <p class="text-2xl font-bold text-black dark:text-white">{{ gpxData.route.altitude.max }} m</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Altimetria + Mappa -->
+        <div class="section-wrapper">
+            <div class="relative grid grid-cols-6 gap-4">
+                <div class="col-span-3 left-column">
+                    <!-- Altimetria -->
+                    <div class="w-full p-6 bg-white rounded-xl border border-gray-200">
+                        <p class="flex justify-between mb-2 text-black text-lg font-bold">
+                            <span>Elevation Profile</span>
+                            <label class="flex items-center gap-2 text-sm">
+                                <input type="checkbox" v-model="elevationChart.settings.followEnabled" />
+                                Follow
+                            </label>
+                        </p>
+                        <ElevationChart
+                            ref="elevationChart"
+                            :points="map.trackPoints"
+                            :slopeRanges="elevationChart.slopeRanges"
+                            :onHoverPoint="updateMapMarkerPosition"
+                            :onCenterMap="centerMapOnPoint"
+                            :onResetMap="resetMap"
+                        />
+                    </div>
+                    <!-- OTHER BLOCK HERE -->
+                </div>
+                <!-- Mappa -->
+                <div class="col-span-3">
+                    <div class="right-sticky w-full]">
+                        <MapView
+                            ref="mapView"
+                            :points="map.trackPoints"
+                            :enableFollow="elevationChart.settings.followEnabled"
+                            :fixedZoom="14"
+                            @hover-from-map="highlightChartFromMap"
+                            @hover-from-map-end="clearHighlightFromMap"
+                        />
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="section-wrapper w-boxed p-[20px]">
             <div class="layout-content-container flex flex-col w-full max-w-7xl flex-1 gap-8">
-                <div class="flex flex-wrap justify-between gap-4">
-                    <div class="flex flex-col gap-2">
-                        <p class="text-black text-4xl font-black leading-tight tracking-[-0.033em]">
-                            Analisi Percorso: Sentiero delle Dolomiti</p>
-                        <p class="text-[#499c65] text-base font-normal leading-normal">Panoramica dettagliata del tuo
-                            tracciato, dati contestuali e previsioni meteo.</p>
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-5 gap-8 mx-[-20px]">
-                    <div class="col-span-2 p-6 bg-white rounded-xl border border-gray-200">
-                        <input class="hidden expander" id="description-expander" type="checkbox"/>
-                        <div class="flex justify-between items-center">
-                            <h2 class="text-black text-xl font-bold leading-tight tracking-[-0.015em]">Descrizione del Percorso</h2>
-                        </div>
-                        <div class="mt-4 space-y-4">
-                            <p class="text-sm text-gray-700">Questo spettacolare
-                                sentiero ad anello si snoda nel cuore delle Dolomiti, offrendo panorami mozzafiato e
-                                un'immersione totale nella natura alpina. Il percorso inizia dolcemente attraverso
-                                prati fioriti per poi salire gradualmente verso forcelle rocciose e passaggi
-                                suggestivi. Punti salienti includono la vista sulle Tre Cime di Lavaredo e il
-                                passaggio vicino a un rifugio storico dove è possibile fare una sosta.</p>
-                        </div>
-                    </div>
-                    <div class="lg:col-span-3 flex flex-col gap-8">
-                        <div
-                            class="w-full h-full bg-center bg-no-repeat aspect-video bg-cover rounded-xl object-cover border border-gray-200"
-                            data-alt="Interactive map showing the GPX route in the Dolomites"
-                            data-location="Dolomites, Italy"
-                            style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuC1D6HK5aooI6GMthMU6qfGuq6EIT4_VBSZhK6w-4OnE2isWUrFLPmsTe9_76xTRjtVD48wjakh0EQnnDqH3qlF5sjPcdPpkcRTERzPZKWmK9W7ehMqthN0yWuPYnkulPD1VbceBubnRkmiR6RNrJK3VrrMgJskIfBjUkmfFc1LMkusyx7wmEon9hSY-K5XVNV06fY8a_aEDGw5RLvwMsWqjeGAqcE8Jr-GYXxIq-3uQj9cuL8MfGIGxNA8A3W7HxIxb4RoJAGkKpE");'></div>
-                    </div>
-                </div>
-                <div
-                    class="flex flex-col gap-4 p-6 mx-[-20px] bg-white rounded-xl border border-gray-200">
-                    <p class="text-black dark:text-white text-lg font-bold">Profilo Altimetrico</p>
-                    <div class="flex min-h-[180px] flex-1 flex-col gap-8 py-4">
-                        <svg fill="none" height="148" preserveAspectRatio="none" viewBox="-3 0 478 150"
-                             width="100%" xmlns="http://www.w3.org/2000/svg">
-                            <path
-                                d="M0 109C18.1538 109 18.1538 21 36.3077 21C54.4615 21 54.4615 41 72.6154 41C90.7692 41 90.7692 93 108.923 93C127.077 93 127.077 33 145.231 33C163.385 33 163.385 101 181.538 101C199.692 101 199.692 61 217.846 61C236 61 236 45 254.154 45C272.308 45 272.308 121 290.462 121C308.615 121 308.615 149 326.769 149C344.923 149 344.923 1 363.077 1C381.231 1 381.231 81 399.385 81C417.538 81 417.538 129 435.692 129C453.846 129 453.846 25 472 25V149H326.769H0V109Z"
-                                fill="url(#paint0_linear_1131_5935)"></path>
-                            <path
-                                d="M0 109C18.1538 109 18.1538 21 36.3077 21C54.4615 21 54.4615 41 72.6154 41C90.7692 41 90.7692 93 108.923 93C127.077 93 127.077 33 145.231 33C163.385 33 163.385 101 181.538 101C199.692 101 199.692 61 217.846 61C236 61 236 45 254.154 45C272.308 45 272.308 121 290.462 121C308.615 121 308.615 149 326.769 149C344.923 149 344.923 1 363.077 1C381.231 1 381.231 81 399.385 81C417.538 81 417.538 129 435.692 129C453.846 129 453.846 25 472 25"
-                                stroke="#25f46a" stroke-linecap="round" stroke-width="3"></path>
-                            <defs>
-                                <linearGradient gradientUnits="userSpaceOnUse" id="paint0_linear_1131_5935"
-                                                x1="236" x2="236" y1="1" y2="149">
-                                    <stop stop-color="#25f46a" stop-opacity="0.2"></stop>
-                                    <stop offset="1" stop-color="#25f46a" stop-opacity="0"></stop>
-                                </linearGradient>
-                            </defs>
-                        </svg>
-                        <div class="flex justify-around">
-                            <p class="text-[#499c65] text-xs font-bold leading-normal tracking-[0.015em]">
-                                0km</p>
-                            <p class="text-[#499c65] text-xs font-bold leading-normal tracking-[0.015em]">
-                                5km</p>
-                            <p class="text-[#499c65] text-xs font-bold leading-normal tracking-[0.015em]">
-                                10km</p>
-                            <p class="text-[#499c65] text-xs font-bold leading-normal tracking-[0.015em]">
-                                15km</p>
-                            <p class="text-[#499c65] text-xs font-bold leading-normal tracking-[0.015em]">
-                                20km</p>
-                            <p class="text-[#499c65] text-xs font-bold leading-normal tracking-[0.015em]">
-                                25km</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="w-full">
-                    <h2 class="w-full text-black text-xl font-bold leading-tight tracking-[-0.015em] pt-2 mb-6">Riepilogo Dati</h2>
-                    <div class="mx-[-20px] grid grid-cols-5 gap-4">
-                        <div
-                            class="flex flex-col gap-2 p-4 bg-white rounded-xl border border-gray-200">
-                            <span class="material-symbols-outlined text-[#499c65]">route</span>
-                            <p class="text-sm text-gray-600 dark:text-gray-400">Distanza</p>
-                            <p class="text-2xl font-bold text-black">25.3 km</p>
-                        </div>
-                        <div
-                            class="flex flex-col gap-2 p-4 bg-white rounded-xl border border-gray-200">
-                            <span class="material-symbols-outlined text-[#499c65]">landscape</span>
-                            <p class="text-sm text-gray-600 dark:text-gray-400">Dislivello Totale</p>
-                            <p class="text-2xl font-bold text-black">1,250 m</p>
-                        </div>
-                        <div
-                            class="flex flex-col gap-2 p-4 bg-white rounded-xl border border-gray-200">
-                            <span class="material-symbols-outlined text-[#499c65]">vertical_align_bottom</span>
-                            <p class="text-sm text-gray-600">Altitudine Min</p>
-                            <p class="text-2xl font-bold text-black">1,800 m</p>
-                        </div>
-                        <div
-                            class="flex flex-col gap-2 p-4 bg-white rounded-xl border border-gray-200">
-                            <span class="material-symbols-outlined text-[#499c65]">vertical_align_top</span>
-                            <p class="text-sm text-gray-600">Altitudine Max</p>
-                            <p class="text-2xl font-bold text-black dark:text-white">2,650 m</p>
-                        </div>
-                        <div
-                            class="flex flex-col gap-2 p-4 bg-white rounded-xl border border-gray-200">
-                            <span class="material-symbols-outlined text-[#499c65]">elevation</span>
-                            <p class="text-sm text-gray-600">Salite</p>
-                            <p class="text-2xl font-bold text-black dark:text-white">15</p>
-                        </div>
-                    </div>
-                </div>
+                <!-- Informazioni Paese -->
                 <div class="flex flex-col col-span-1 md:col-span-2 gap-6">
                     <div class="flex justify-between items-center">
                         <h3 class="text-black text-xl font-bold leading-tight tracking-[-0.015em]">Informazioni sui Paesi</h3>
@@ -338,6 +317,7 @@
                         </div>
                     </div>
                 </div>
+                <!-- Informazioni Turistiche -->
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div class="flex flex-col gap-6">
                         <h2 class="text-black dark:text-white text-xl font-bold leading-tight tracking-[-0.015em]">
@@ -396,6 +376,7 @@
                         </div>
                     </div>
                 </div>
+                <!-- Attrezzatura Consigliata -->
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div class="flex flex-col gap-6">
                         <h2 class="text-black dark:text-white text-xl font-bold leading-tight tracking-[-0.015em] pt-5">
@@ -466,48 +447,125 @@
 
 <style scoped>
 @import '../assets/css/main.css';
-/*@import '../assets/css/views/report.css';*/
+@import '../assets/css/views/report.css';
 </style>
 
 <script>
+// COMPONENTI
+import MapView from "../components/MapView.vue";
+import ElevationChart from "../components/ElevationChart.vue";
+
+// SERVIZI
 import { getCountryList } from "../services/ViaggiareSicuriService.js";
+import gpxUtils from "../services/UtilitiesService.js";
 
 export default {
     name: "ReportView",
-    components: {},
+    components: {
+        MapView,
+        ElevationChart
+    },
     data() {
         return {
             selectors: {
                 country: '0'
             },
             gpxData: {
-                'title': 'Sentiero delle Dolomiti',
-                'description': 'Questo spettacolare sentiero ad anello si snoda nel cuore delle Dolomiti, offrendo panorami mozzafiato e un\'immersione totale nella natura alpina. Il percorso inizia dolcemente attraverso prati fioriti per poi salire gradualmente verso forcelle rocciose e passaggi suggestivi. Punti salienti includono la vista sulle Tre Cime di Lavaredo e il passaggio vicino a un rifugio storico dove è possibile fare una sosta.',
-                'route': {
-                    'distance': 25.3,
-                    'elevation': 1250,
-                    'altitude': {
-                        'min': 1800,
-                        'max': 2650
+                title: '--',
+                description: '--',
+                route: {
+                    distance: 0,
+                    elevation: {
+                        gain: 0,
+                        loss: 0
                     },
-                    'hills': {
-                        'totals': 15
+                    altitude: {
+                        min: 0,
+                        max: 0
+                    },
+                    hills: {
+                        totals: 0
                     }
-                },
-                'country': ['Svizzera', 'Francia'],
-                'countryData': {}
+                }
+            },
+            map: {
+                trackPoints: []
+            },
+            elevationChart: {
+                slopeRanges: [
+                    { label: "Soft climb", min: 0, max: 5, color: "#22c55e" },
+                    { label: "Climb", min: 5, max: 12, color: "#16a34a" },
+                    { label: "Hard climb", min: 12, max: 999, color: "#7e22ce" },
+                    { label: "Descent", min: -10, max: 0, color: "#ef4444" },
+                    { label: "Steep descent", min: -999, max: -10, color: "#1e3a8a" }
+                ],
+                settings: {
+                    followEnabled: true
+                }
             }
-        }
+        };
     },
+
     methods: {
         async loadData() {
             this.result = await getCountryList();
+        },
+
+        /* ---------------------------------------------- */
+        /*  GPX UPLOAD                                    */
+        /* ---------------------------------------------- */
+        async handleGPXUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const text = await file.text();
+            const xml = new DOMParser().parseFromString(text, "text/xml");
+
+            const pts = gpxUtils.getRoutePoints(xml);
+            this.map.trackPoints = pts;
+
+            this.gpxData.route.distance = gpxUtils.getRouteDistance(pts);
+            this.gpxData.route.elevation = gpxUtils.getRouteElevation(pts);
+            this.gpxData.route.altitude = gpxUtils.getRouteAltitude(pts);
+            this.gpxData.route.hills.totals = gpxUtils.getHills(pts, 30);
+
+            this.gpxData.title = file.name.replace(".gpx", "");
+            this.gpxData.description = "Tracciato caricato tramite file GPX.";
+        },
+
+        /* -------------------------------------------------------- */
+        /*   GRAFICO → MAPPA                                        */
+        /* -------------------------------------------------------- */
+        updateMapMarkerPosition(index) {
+            this.$refs.mapView.updateMarker(index);
+        },
+        centerMapOnPoint(index) {
+            this.$refs.mapView.centerMap(index);
+        },
+        resetMap() {
+            const map = this.$refs.mapView?.map;
+            const polyline = this.$refs.mapView?.polyline;
+            if (!map || !polyline) return;
+
+            map.fitBounds(polyline.getBounds(), {
+                padding: [50, 50],
+                animate: true
+            });
+        },
+
+        /* -------------------------------------------------------- */
+        /*   MAPPA → GRAFICO (hover sulla traccia)                  */
+        /* -------------------------------------------------------- */
+        highlightChartFromMap(index) {
+            this.$refs.elevationChart?.setHoverIndex(index);
+        },
+        clearHighlightFromMap() {
+            this.$refs.elevationChart?.clearHoverIndex();
         }
     },
-    mounted() {
 
+    mounted() {
         this.loadData();
     }
-}
-
+};
 </script>

@@ -4,4 +4,6 @@ import App from './App.vue'
 import router from './router'
 import p5vue from 'p5vue'
 
+import 'leaflet/dist/leaflet.css';
+
 createApp(App).use(router).use(p5vue).mount('#app')

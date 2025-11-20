@@ -57,7 +57,7 @@
                     <form
                         id="gpx-form"
                         @submit="checkForm"
-                        action="https://vuejs.org/"
+                        action="/report"
                         method="post"
                     >
 
@@ -68,7 +68,7 @@
                                 1. Upload your GPX file
                             </h3>
                             <p class="text-base text-neutral-600 dark:text-neutral-400">
-                                Carica il tuo file GPX qui per iniziare l'analisi.
+                                Upload the GPX file to be analyzed here.
                             </p>
 
                             <br>
@@ -84,7 +84,7 @@
                                 2. Customize route
                             </h3>
                             <p class="text-base text-neutral-600 dark:text-neutral-400">
-                                Personalizza la tua avventura per creare un report più dettagliato.
+                                Customize your adventure to create a more detailed report.
                             </p>
 
                             <br>
@@ -188,7 +188,7 @@
                                                    type="number"
                                                    min="1"
                                                    placeholder="e.g., 3"
-                                                   required />
+                                                   :required="reportData.activity.mood === 'travel'" />
                                             <svg class="absolute top-[11px] right-[12px]" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><g fill="none"><path d="m12.593 23.258l-.011.002l-.071.035l-.02.004l-.014-.004l-.071-.035q-.016-.005-.024.005l-.004.01l-.017.428l.005.02l.01.013l.104.074l.015.004l.012-.004l.104-.074l.012-.016l.004-.017l-.017-.427q-.004-.016-.017-.018m.265-.113l-.013.002l-.185.093l-.01.01l-.003.011l.018.43l.005.012l.008.007l.201.093q.019.005.029-.008l.004-.014l-.034-.614q-.005-.018-.02-.022m-.715.002a.02.02 0 0 0-.027.006l-.006.014l-.034.614q.001.018.017.024l.015-.002l.201-.093l.01-.008l.004-.011l.017-.43l-.003-.012l-.01-.01z"/><path fill="currentColor" d="M18 16a3 3 0 1 1 0 6a3 3 0 0 1 0-6M15.5 4a4.5 4.5 0 1 1 0 9h-7a2.5 2.5 0 0 0 0 5H13a1 1 0 1 1 0 2H8.5a4.5 4.5 0 1 1 0-9h7a2.5 2.5 0 0 0 0-5H11a1 1 0 1 1 0-2zM6 2a3 3 0 1 1 0 6a3 3 0 0 1 0-6"/></g></svg>
                                         </div>
                                     </div>
@@ -202,7 +202,7 @@
                                                    type="number"
                                                    min="1"
                                                    placeholder="e.g., 80"
-                                                   required/>
+                                                   :required="reportData.activity.mood === 'race'" />
                                             <svg class="absolute top-[11px] right-[12px]" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><g fill="none"><path d="m12.593 23.258l-.011.002l-.071.035l-.02.004l-.014-.004l-.071-.035q-.016-.005-.024.005l-.004.01l-.017.428l.005.02l.01.013l.104.074l.015.004l.012-.004l.104-.074l.012-.016l.004-.017l-.017-.427q-.004-.016-.017-.018m.265-.113l-.013.002l-.185.093l-.01.01l-.003.011l.018.43l.005.012l.008.007l.201.093q.019.005.029-.008l.004-.014l-.034-.614q-.005-.018-.02-.022m-.715.002a.02.02 0 0 0-.027.006l-.006.014l-.034.614q.001.018.017.024l.015-.002l.201-.093l.01-.008l.004-.011l.017-.43l-.003-.012l-.01-.01z"/><path fill="currentColor" d="M18 16a3 3 0 1 1 0 6a3 3 0 0 1 0-6M15.5 4a4.5 4.5 0 1 1 0 9h-7a2.5 2.5 0 0 0 0 5H13a1 1 0 1 1 0 2H8.5a4.5 4.5 0 1 1 0-9h7a2.5 2.5 0 0 0 0-5H11a1 1 0 1 1 0-2zM6 2a3 3 0 1 1 0 6a3 3 0 0 1 0-6"/></g></svg>
                                         </div>
                                     </div>
@@ -217,7 +217,7 @@
                                 3. Generate report
                             </h3>
                             <p class="text-base text-neutral-600 dark:text-neutral-400">
-                                Ci siamo, il tuo report è quasi pronto. Un ultimo passo verso la tua avventura!
+                                That's it, your report is almost ready. One last step towards your adventure!
                             </p>
                             <br>
                             <div class="flex flex-wrap gap-6">
@@ -291,9 +291,10 @@
                                 Next
                                 <span class="icon-[tabler--chevron-right] text-primary-content rtl:rotate-180"></span>
                             </button>
-                            <button type="button"
+                            <button type="submit"
                                     class="btn btn-primary"
                                     @click="generateReport()"
+                                    :disabled="stepper.currentIndex === 3 && !reportData.title.length"
                                     :hidden="stepper.currentIndex < 3">
                                 GENERATE  !
                             </button>
