@@ -26,6 +26,7 @@ export default {
             map: null,
             polyline: null,
             movingMarker: null,
+            segmentPolyline: null
         };
     },
 
@@ -145,7 +146,58 @@ export default {
          * MAPPA → GRAFICO (uscita hover)
          * ------------------------------------------ */
         handleTrackLeave() {
-            this.$emit("hover-from-map-end");
+            //this.$emit("hover-from-map-end");
+        },
+
+        /* ------------------------------------------
+         * Evidenzia segmento selezionato + zoom mappa
+         * ------------------------------------------ */
+        highlightSegment(start, end) {
+            if (!this.polyline) return;
+
+            const segmentPoints = this.points.slice(start, end + 1);
+
+            // Evita errori: serve minimo 2 punti validi
+            if (!segmentPoints || segmentPoints.length < 2) {
+                console.warn("Segmento troppo corto, impossibile calcolare bounds");
+                return;
+            }
+
+            // Filtra eventuali punti invalidi
+            const validPoints = segmentPoints.filter(p => p.lat && p.lon);
+            if (validPoints.length < 2) {
+                console.warn("Punti non validi per fitBounds()");
+                return;
+            }
+
+            // Rimuovi precedente highlight
+            if (this.segmentLine) {
+                this.map.removeLayer(this.segmentLine);
+            }
+
+            this.segmentLine = L.polyline(segmentPoints.map(p => [p.lat, p.lon]), {
+                color: "#f97316",
+                weight: 6,
+                opacity: 0.8
+            }).addTo(this.map);
+
+            // Zoom sulla porzione
+            this.map.fitBounds(this.segmentLine.getBounds(), {
+                padding: [30, 30]
+            });
+        },
+        clearHighlightedSegment() {
+            if (this.segmentLine) {
+                this.map.removeLayer(this.segmentLine);
+                this.segmentLine = null;
+            }
+
+            // Reset zoom to full track
+            if (this.polyline) {
+                this.map.fitBounds(this.polyline.getBounds(), {
+                    padding: [50, 50]
+                });
+            }
         }
     },
 

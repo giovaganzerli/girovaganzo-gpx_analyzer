@@ -72,6 +72,11 @@ export default {
     },
     methods: {
         onChange() {
+            const reader = new FileReader();
+            reader.onload = () => {
+                localStorage.setItem('reportFile', reader.result);
+            }
+            reader.readAsText(...this.$refs.file.files);
             this.files.push(...this.$refs.file.files);
             this.$emit('onChange', this.files);
         },
@@ -84,6 +89,7 @@ export default {
         },
         drop(e) {
             e.preventDefault();
+            const reader = new FileReader();
             this.$refs.file.files = e.dataTransfer.files;
             this.onChange();
             this.isDragging = false;

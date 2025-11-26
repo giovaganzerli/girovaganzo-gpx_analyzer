@@ -15,7 +15,7 @@ const routes = [
         component: Upload,
     },
     {
-        path: '/report',
+        path: '/report/new',
         name: 'Report',
         component: Report,
     }

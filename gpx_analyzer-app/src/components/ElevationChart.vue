@@ -7,10 +7,7 @@
 
             <span class="w-4 h-2 rounded-sm block mr-[5px]"
                   :style="{ background: range.color }"></span>
-
-            <span>
-                {{ range.label }} ({{ getKmForRange(range).toFixed(1) }} km)
-            </span>
+            <span>{{ range.label }} ({{ getKmForRange(range).toFixed(1) }} km)</span>
 
             <!-- Tooltip -->
             <div class="absolute z-10 left-0 top-full mt-1 invisible opacity-0
@@ -26,7 +23,12 @@
     <canvas
         ref="chartCanvas"
         class="w-full h-[270px]"
-        @mouseleave="handleLeave"></canvas>
+        style="cursor: crosshair"
+        @mousedown="handleMouseDown"
+        @mousemove="handleMouseMove"
+        @mouseup="handleMouseUp"
+        @mouseleave="handleMouseLeave"
+    ></canvas>
 
 </template>
 
@@ -41,39 +43,46 @@ export default {
         slopeRanges: { type: Array, required: true },
         onHoverPoint: Function,
         onCenterMap: Function,
-        onResetMap: Function
+        onResetMap: Function,
+        onSelectSegment: Function,
+        disableFollow: Function,
+        enableFollow: Function
     },
     data() {
         return {
             chart: null,
+            hoverIndex: null,
             slopes: [],
             cumDist: [],
             cumGain: [],
             cumLoss: [],
-            slopeKm: []
+            slopeKm: [],
+            isBrushing: false,
+            brushStartX: null,
+            brushEndX: null,
+            zoomRange: null
         };
     },
     methods: {
 
         /* -----------------------------------
-         * Plugin: riempimento salite
+         * Plugin: Riempimento salite
          ----------------------------------- */
         createFillClimbPlugin() {
             return {
                 id: "fillClimbPlugin",
 
-                afterDatasetDraw: (chart, args, pluginOptions) => {
-                    const { ctx, chartArea } = chart;
+                afterDatasetsDraw(chart, args, opts) {
                     const meta = chart.getDatasetMeta(0);
 
+                    const { ctx, chartArea } = chart;
                     const elevations = chart.data.datasets[0].data;
-                    const slopes = pluginOptions.slopes;
-                    const ranges = pluginOptions.slopeRanges;
+                    const slopes = opts.slopes;
+                    const ranges = opts.slopeRanges;
 
                     const getColor = slope => {
                         for (const r of ranges) {
-                            if (slope >= r.min && slope < r.max)
-                                return r.color;
+                            if (slope >= r.min && slope < r.max) return r.color;
                         }
                         return null;
                     };
@@ -84,8 +93,13 @@ export default {
                         const slope = slopes[i];
                         if (slope <= 0) continue;
 
-                        const p0 = meta.data[i - 1].getProps(["x", "y"], true);
-                        const p1 = meta.data[i].getProps(["x", "y"], true);
+                        const prevPoint = meta.data[i - 1];
+                        const currentPoint = meta.data[i];
+
+                        if (!prevPoint || !currentPoint) continue;
+
+                        const p0 = prevPoint.getProps(["x", "y"], true);
+                        const p1 = currentPoint.getProps(["x", "y"], true);
 
                         const color = getColor(slope);
                         if (!color) continue;
@@ -105,6 +119,183 @@ export default {
                         ctx.closePath();
                         ctx.fill();
                     }
+
+                    ctx.restore();
+                }
+            };
+        },
+
+        /* -----------------------------------
+         * Plugin: Cursore verticale
+         ----------------------------------- */
+        createVerticalCursorPlugin() {
+            const self = this;
+
+            return {
+                id: "verticalCursorPlugin",
+
+                afterDatasetsDraw(chart) {
+                    const index = self.hoverIndex;
+                    if (index === null || index === undefined) return;
+
+                    const meta = chart.getDatasetMeta(0);
+                    if (!meta || !meta.data || !meta.data[index]) return;
+
+                    const point = meta.data[index];
+                    const { x } = point.getProps(["x"], true);
+                    const { ctx, chartArea } = chart;
+
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.lineWidth = 1;
+                    ctx.strokeStyle = "rgba(0, 0, 0, 0.35)";
+                    ctx.moveTo(x, chartArea.top);
+                    ctx.lineTo(x, chartArea.bottom);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            };
+        },
+
+        /* -----------------------------------
+         * Plugin: Tooltip personalizzato
+         ----------------------------------- */
+        createTooltipCursorPlugin() {
+            const self = this;
+
+            return {
+                id: "customTooltipPlugin",
+
+                afterDraw(chart) {
+                    const index = self.hoverIndex;
+                    if (index === null || index === undefined) return;
+
+                    const meta = chart.getDatasetMeta(0);
+                    if (!meta || !meta.data[index]) return;
+
+                    const point = meta.data[index];
+                    const { x, y } = point.getProps(["x", "y"], true);
+                    const { ctx, chartArea } = chart;
+
+                    const pointData = self.chart.data.datasets[0].data[index] || { x: 0, y: 0 };
+
+                    // Contenuto tooltip
+                    const altitude = (pointData.y ?? 0).toFixed(0);
+                    const slope    = (self.slopes[index] ?? 0).toFixed(1);
+                    const dist     = (self.cumDist[index] ?? 0).toFixed(2);
+                    const gain     = (self.cumGain[index] ?? 0).toFixed(0);
+                    const loss     = (self.cumLoss[index] ?? 0).toFixed(0);
+
+                    const lines = [
+                        `Distance: ${dist} km`,
+                        `+${gain} / -${loss} m`,
+                        `-------`,
+                        `Altitude: ${altitude} m`,
+                        `Slope: ${slope} %`
+                    ];
+
+                    // -----------------------------
+                    // MISURE TESTO
+                    // -----------------------------
+                    ctx.font = "12px sans-serif";
+                    const padding = 8;
+                    const lineHeight = 16;
+
+                    const textWidths = lines.map(l => ctx.measureText(l).width);
+                    const textWidth = Math.max(...textWidths);
+                    const boxWidth = textWidth + padding * 2;
+                    const boxHeight = lines.length * lineHeight + padding * 2;
+
+                    // -----------------------------
+                    // CALCOLO POSIZIONE TOOLTIP
+                    // -----------------------------
+                    let boxX = x + 12;
+                    let boxY = y - boxHeight - 12;
+
+                    // Se esce sopra → mettilo sotto
+                    if (boxY < chartArea.top + 5) {
+                        boxY = y + 12;
+                    }
+
+                    // Limiti canvas
+                    const canvasWidth = chart.width;
+
+                    // Se esce a destra → sposta a sinistra
+                    if (boxX + boxWidth > canvasWidth - 5) {
+                        boxX = x - boxWidth - 12;
+                    }
+
+                    // Se esce a sinistra → clamp
+                    if (boxX < 5) boxX = 5;
+
+                    // -----------------------------
+                    // DISEGNO BOX
+                    // -----------------------------
+                    ctx.save();
+                    ctx.fillStyle = "rgba(0,0,0,0.75)";
+                    ctx.strokeStyle = "rgba(255,255,255,0.35)";
+                    ctx.lineWidth = 1;
+                    const radius = 6;
+
+                    ctx.beginPath();
+                    ctx.roundRect(boxX, boxY, boxWidth, boxHeight, radius);
+                    ctx.fill();
+                    ctx.stroke();
+
+                    // -----------------------------
+                    // TESTO
+                    // -----------------------------
+                    ctx.fillStyle = "#fff";
+                    let lineY = boxY + padding + 12;
+
+                    lines.forEach(line => {
+                        ctx.fillText(line, boxX + padding, lineY);
+                        lineY += lineHeight;
+                    });
+
+                    ctx.restore();
+                }
+            };
+        },
+
+        /* -----------------------------------
+         * Plugin: Selezione (brush) sul grafico
+         * ----------------------------------- */
+        createBrushSelectionPlugin() {
+            const self = this;
+
+            return {
+                id: "brushSelectionPlugin",
+
+                // Disegna overlay di selezione
+                afterDraw(chart) {
+                    if (!self.isBrushing || self.brushStartX == null || self.brushEndX == null) {
+                        return;
+                    }
+
+                    const { ctx, chartArea } = chart;
+                    const x1 = self.brushStartX;
+                    const x2 = self.brushEndX;
+
+                    const left = Math.max(Math.min(x1, x2), chartArea.left);
+                    const right = Math.min(Math.max(x1, x2), chartArea.right);
+                    const width = right - left;
+                    if (width <= 0) return;
+
+                    ctx.save();
+                    // oscura il resto
+                    ctx.fillStyle = "rgba(0,0,0,0.05)";
+                    ctx.fillRect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, chartArea.bottom - chartArea.top);
+
+                    // evidenzia la selezione
+                    ctx.fillStyle = "rgba(72, 187, 120, 0.25)"; // verdino
+                    ctx.strokeStyle = "rgba(34, 139, 94, 0.8)";
+                    ctx.lineWidth = 1;
+
+                    ctx.beginPath();
+                    ctx.rect(left, chartArea.top, width, chartArea.bottom - chartArea.top);
+                    ctx.fill();
+                    ctx.stroke();
 
                     ctx.restore();
                 }
@@ -210,20 +401,59 @@ export default {
             this.cumLoss = cumLoss;
             this.slopeKm = slopeKm;
 
+            let startX = 0;
+            let endX = cumDist[cumDist.length - 1];
+
+            if(this.brushStartX && this.brushEndX) {
+
+                const minX = Math.min(this.brushStartX, this.brushEndX);
+                const maxX = Math.max(this.brushStartX, this.brushEndX);
+
+                if (maxX - minX < 5) return;
+
+                const xScale = this.chart.scales.x;
+
+                const startVal = xScale.getValueForPixel(minX);
+                const endVal = xScale.getValueForPixel(maxX);
+
+                let startIndex = this.cumDist.findIndex(v => v >= startVal);
+                let endIndex = this.cumDist.length - 1;
+
+                for (let i = this.cumDist.length - 1; i >= 0; i--) {
+                    if (this.cumDist[i] <= endVal) {
+                        endIndex = i;
+                        break;
+                    }
+                }
+
+                startX = this.cumDist[startIndex];
+                endX = this.cumDist[endIndex];
+
+                this.brushStartX = null;
+                this.brushEndX = null;
+            }
+
             if (this.chart) this.chart.destroy();
 
             const fillPlugin = this.createFillClimbPlugin();
+            const verticalCursorPlugin = this.createVerticalCursorPlugin();
+            const tooltipCursorPlugin = this.createTooltipCursorPlugin();
+            const brushSelectionPlugin = this.createBrushSelectionPlugin();
 
             const ctx = this.$refs.chartCanvas.getContext("2d");
 
             this.chart = new Chart(ctx, {
                 type: "line",
                 data: {
-                    labels: cumDist,
+                    //labels: cumDist,
                     datasets: [
                         {
                             label: "Altitude (m)",
-                            data: elevations,
+                            data: elevations.map((y, i) => ({ x: Number(cumDist[i]), y: Number(y) })),
+                            parsing: {
+                                xAxisKey: "x",
+                                yAxisKey: "y"
+                            },
                             borderWidth: 2,
                             pointRadius: 0,
                             tension: 0.2,
@@ -243,84 +473,203 @@ export default {
                     plugins: {
                         legend: { display: false },
                         tooltip: {
-                            enabled: true,
-                            displayColors: false,
-                            callbacks: {
-                                title: items => {
-                                    const idx = items[0].dataIndex;
-                                    return [
-                                        `Altitude: ${elevations[idx].toFixed(0)} m`,
-                                        `Slope: ${(slopes[idx] ?? 0).toFixed(1)} %`
-                                    ];
-                                },
-                                label: item => {
-                                    const idx = item.dataIndex;
-                                    return [
-                                        `Distance: ${cumDist[idx].toFixed(2)} km`,
-                                        `+ Gain: ${cumGain[idx].toFixed(0)} m`,
-                                        `– Loss: ${cumLoss[idx].toFixed(0)} m`
-                                    ];
-                                }
-                            }
+                            enabled: false
                         },
-                        fillClimbPlugin: { slopes, slopeRanges: this.slopeRanges }
+                        fillClimbPlugin: {
+                            slopes,
+                            slopeRanges: this.slopeRanges
+                        }
                     },
                     scales: {
-                        x: { title: { display: true, text: "Distance (km)" } },
-                        y: { title: { display: true, text: "Altitude (m)" } }
+                        x: {
+                            type: "linear",
+                            title: { display: true, text: "Distance (km)" },
+                            min: startX,
+                            max: endX
+                        },
+                        y: {
+                            title: { display: true, text: "Altitude (m)" }
+                        }
                     },
 
                     /* -----------------------------------
                      * Hover → mappa
                      ----------------------------------- */
                     onHover: (event, chartElement) => {
-                        if (!chartElement.length) return;
+                        if (!chartElement.length) {
+                            this.hoverIndex = null;
+                            requestAnimationFrame(() => {
+                                this.chart.draw();
+                            });
+                            return;
+                        }
+
                         const index = chartElement[0].index;
 
+                        // aggiorna indice per cursore verticale
+                        this.hoverIndex = index;
+
+                        // mantiene il comportamento esistente: aggiorna mappa
                         this.onHoverPoint?.(index);
                         this.onCenterMap?.(index);
+
+                        // ridisegna per far vedere subito la linea
+                        if (this.chart) {
+                            requestAnimationFrame(() => {
+                                this.chart.draw();
+                            });
+                        }
                     }
                 },
-                plugins: [fillPlugin]
+                plugins: [
+                    fillPlugin,
+                    verticalCursorPlugin,
+                    tooltipCursorPlugin,
+                    brushSelectionPlugin
+                ]
             });
         },
 
         /** -----------------------------------
-         * Evento uscita mouse → reset
-         ----------------------------------- */
-        handleLeave() {
-            this.onResetMap?.();
-        },
-
-        /** -----------------------------------
          * Hover proveniente dalla MAPPA
-         ----------------------------------- */
+         * ----------------------------------- */
         setHoverIndex(index) {
-            /*
             if (!this.chart) return;
 
-            const meta = this.chart.getDatasetMeta(0);
-            const element = meta.data[index];
+            const chart = this.chart;
 
-            this.chart.setActiveElements([{ datasetIndex: 0, index }]);
+            const meta = chart.getDatasetMeta(0);
+            if (!meta?.data?.[index]) return;
 
-            this.chart.tooltip.setActiveElements(
-                [{ datasetIndex: 0, index }],
-                { x: element.x, y: element.y }
-            );
+            const point = meta.data[index];
+            const { x, y } = point.getProps(["x", "y"], true);
 
-            this.chart.update();
-            */
+            // Imposta l’elemento attivo (cursore + stile punto)
+            this.hoverIndex = index;
+            chart.setActiveElements([{ datasetIndex: 0, index }], { x, y });
+
+            if (this.chart) {
+                requestAnimationFrame(() => {
+                    this.chart.draw();
+                });
+            }
+        },
+        clearHoverIndex() {
+            console.log('leave');
         },
 
-        clearHoverIndex() {
-            /*
+        /* -----------------------------------
+         * Gestione segmento selezionato
+         * ----------------------------------- */
+        handleSegmentSelection(start, end) {
+
+            // callback verso il padre
+            this.onSelectSegment?.({ start, end });
+
+            // Disattiva il follow sulla mappa
+            this.disableFollow?.();
+
+            // usa il plugin per zoomare
+            this.$nextTick(() => {
+                this.buildChart();
+            });
+        },
+
+        resetZoom() {
+            this.$nextTick(() => {
+                this.buildChart();
+            });
+        },
+
+        /* -----------------------------------
+         * Handle mouse event
+         * ----------------------------------- */
+        handleMouseDown(evt) {
             if (!this.chart) return;
 
-            this.chart.setActiveElements([]);
-            this.chart.tooltip.setActiveElements([], {});
-            this.chart.update();
-            */
+            // riabilito il follow sulla mappa
+            this.enableFollow?.();
+
+            const rect = this.$refs.chartCanvas.getBoundingClientRect();
+            const x = evt.clientX - rect.left;
+            const y = evt.clientY - rect.top;
+            const area = this.chart.chartArea;
+            if (!area) return;
+
+            // dentro area del grafico?
+            if (x < area.left || x > area.right || y < area.top || y > area.bottom) {
+                this.isBrushing = false;
+                return;
+            }
+
+            this.isBrushing = true;
+            this.brushStartX = x;
+            this.brushEndX = x;
+
+            this.chart.draw();
+        },
+
+        handleMouseMove(evt) {
+            if (!this.chart) return;
+
+            if (!this.isBrushing) return;
+
+            const rect = this.$refs.chartCanvas.getBoundingClientRect();
+            const x = evt.clientX - rect.left;
+            const area = this.chart.chartArea;
+            if (!area) return;
+
+            const clampedX = Math.min(Math.max(x, area.left), area.right);
+            this.brushEndX = clampedX;
+
+            this.chart.draw();
+        },
+
+        handleMouseUp(evt) {
+            if (!this.chart) return;
+            if (!this.isBrushing) return;
+
+            const area = this.chart.chartArea;
+            if (!area) return;
+
+            this.isBrushing = false;
+
+            const minX = Math.min(this.brushStartX, this.brushEndX);
+            const maxX = Math.max(this.brushStartX, this.brushEndX);
+
+            if (maxX - minX < 5) return;
+
+            const xScale = this.chart.scales.x;
+
+            const startVal = xScale.getValueForPixel(minX);
+            const endVal = xScale.getValueForPixel(maxX);
+
+            let startIndex = this.cumDist.findIndex(v => v >= startVal);
+            let endIndex = this.cumDist.length - 1;
+
+            for (let i = this.cumDist.length - 1; i >= 0; i--) {
+                if (this.cumDist[i] <= endVal) {
+                    endIndex = i;
+                    break;
+                }
+            }
+
+            this.handleSegmentSelection(startIndex, endIndex);
+
+        },
+
+        handleMouseLeave(evt) {
+
+            if (!this.chart) return;
+
+            this.hoverIndex = null;
+            this.isBrushing = false;
+            this.brushStartX = null;
+            this.brushEndX = null;
+
+            this.onResetMap?.();
+
+            this.chart.draw();
         }
     },
 

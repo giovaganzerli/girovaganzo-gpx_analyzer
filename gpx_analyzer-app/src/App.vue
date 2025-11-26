@@ -1,5 +1,5 @@
 <template>
-    <div id="app-container" :class="'view-'+ currViewSlug">
+    <div id="app-container">
 
         <BGCanvas />
         <Header />

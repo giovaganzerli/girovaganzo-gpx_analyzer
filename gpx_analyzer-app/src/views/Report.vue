@@ -4,17 +4,11 @@
              class="w-full mt-[120px] mb-[30px] p-[20px]">
 
         <div class="section-wrapper w-boxed p-[20px]">
-            <input
-                type="file"
-                accept=".gpx"
-                @change="handleGPXUpload"
-                class="block mb-5 text-sm text-gray-700 border border-gray-300 p-2 rounded-lg bg-white"
-            >
             <!-- Titolo + Descrizione -->
             <div class="w-full mb-5">
                 <p class="text-black text-4xl font-black leading-tight tracking-[-0.033em]">
-                    Analyzing: {{ gpxData.title }}</p>
-                <p class="text-[#499c65] text-base font-normal leading-normal"><b>A little briefing:</b> {{ gpxData.description }}</p>
+                    Analyzing: {{ reportData.title }}</p>
+                <p class="text-[#499c65] text-base font-normal leading-normal"><b>A little briefing:</b> {{ generatedData.routeDescription }}</p>
             </div>
             <!-- Dati Percorso -->
             <div class="w-[calc(100%+40px)] col-span-2 flex flex-col gap-8 mx-[-20px]">
@@ -51,18 +45,29 @@
                     <div class="w-full p-6 bg-white rounded-xl border border-gray-200">
                         <p class="flex justify-between mb-2 text-black text-lg font-bold">
                             <span>Elevation Profile</span>
-                            <label class="flex items-center gap-2 text-sm">
-                                <input type="checkbox" v-model="elevationChart.settings.followEnabled" />
-                                Follow
-                            </label>
+                            <div class="flex items-center gap-2">
+                                <label class="flex items-center gap-2 text-sm">
+                                    <input type="checkbox" v-model="elevationChartProps.settings.followEnabled" />
+                                    Follow
+                                </label>
+                                <label
+                                    v-if="elevationChartProps.settings.selectedSegment"
+                                    @click="resetSelectedSegment"
+                                    class="px-3 py-1 bg-gray-200 text-sm rounded cursor-pointer">
+                                    Reset segment
+                                </label>
+                            </div>
                         </p>
                         <ElevationChart
                             ref="elevationChart"
-                            :points="map.trackPoints"
-                            :slopeRanges="elevationChart.slopeRanges"
+                            :points="mapProps.trackPoints"
+                            :slopeRanges="elevationChartProps.slopeRanges"
                             :onHoverPoint="updateMapMarkerPosition"
                             :onCenterMap="centerMapOnPoint"
                             :onResetMap="resetMap"
+                            :onSelectSegment="handleSegmentSelected"
+                            :disableFollow="disableFollowFromChart"
+                            :enableFollow="enableFollowFromChart"
                         />
                     </div>
                     <!-- OTHER BLOCK HERE -->
@@ -72,8 +77,8 @@
                     <div class="right-sticky w-full]">
                         <MapView
                             ref="mapView"
-                            :points="map.trackPoints"
-                            :enableFollow="elevationChart.settings.followEnabled"
+                            :points="mapProps.trackPoints"
+                            :enableFollow="elevationChartProps.settings.followEnabled"
                             :fixedZoom="14"
                             @hover-from-map="highlightChartFromMap"
                             @hover-from-map-end="clearHighlightFromMap"
@@ -467,12 +472,24 @@ export default {
     },
     data() {
         return {
+            reportData: {
+                file: '',
+                title: '',
+                public: false,
+                activity: {
+                    type: 'bike',
+                    mood: 'travel',
+                },
+                setts: {
+                    start: '',
+                    stages: '',
+                    hours: ''
+                }
+            },
             selectors: {
                 country: '0'
             },
             gpxData: {
-                title: '--',
-                description: '--',
                 route: {
                     distance: 0,
                     elevation: {
@@ -488,10 +505,10 @@ export default {
                     }
                 }
             },
-            map: {
+            mapProps: {
                 trackPoints: []
             },
-            elevationChart: {
+            elevationChartProps: {
                 slopeRanges: [
                     { label: "Soft climb", min: 0, max: 5, color: "#22c55e" },
                     { label: "Climb", min: 5, max: 12, color: "#16a34a" },
@@ -500,8 +517,13 @@ export default {
                     { label: "Steep descent", min: -999, max: -10, color: "#1e3a8a" }
                 ],
                 settings: {
-                    followEnabled: true
+                    followEnabled: true,
+                    selectedSegment: null,
+                    isProgrammaticMapMove: false
                 }
+            },
+            generatedData: {
+                routeDescription: '--'
             }
         };
     },
@@ -514,29 +536,28 @@ export default {
         /* ---------------------------------------------- */
         /*  GPX UPLOAD                                    */
         /* ---------------------------------------------- */
-        async handleGPXUpload(event) {
-            const file = event.target.files[0];
+        async readGPXFile() {
+            const file = this.reportData.file;
             if (!file) return;
 
             const text = await file.text();
             const xml = new DOMParser().parseFromString(text, "text/xml");
 
             const pts = gpxUtils.getRoutePoints(xml);
-            this.map.trackPoints = pts;
+            this.mapProps.trackPoints = pts;
 
+            // GET MAIN ROUTE DATA
             this.gpxData.route.distance = gpxUtils.getRouteDistance(pts);
             this.gpxData.route.elevation = gpxUtils.getRouteElevation(pts);
             this.gpxData.route.altitude = gpxUtils.getRouteAltitude(pts);
             this.gpxData.route.hills.totals = gpxUtils.getHills(pts, 30);
-
-            this.gpxData.title = file.name.replace(".gpx", "");
-            this.gpxData.description = "Tracciato caricato tramite file GPX.";
         },
 
         /* -------------------------------------------------------- */
         /*   GRAFICO → MAPPA                                        */
         /* -------------------------------------------------------- */
         updateMapMarkerPosition(index) {
+            if (this.elevationChartProps.settings.isProgrammaticMapMove) return;
             this.$refs.mapView.updateMarker(index);
         },
         centerMapOnPoint(index) {
@@ -545,7 +566,7 @@ export default {
         resetMap() {
             const map = this.$refs.mapView?.map;
             const polyline = this.$refs.mapView?.polyline;
-            if (!map || !polyline) return;
+            if (!map || !polyline || this.elevationChartProps.settings.selectedSegment) return;
 
             map.fitBounds(polyline.getBounds(), {
                 padding: [50, 50],
@@ -557,15 +578,73 @@ export default {
         /*   MAPPA → GRAFICO (hover sulla traccia)                  */
         /* -------------------------------------------------------- */
         highlightChartFromMap(index) {
+            if(this.elevationChartProps.settings.isProgrammaticMapMove) return
             this.$refs.elevationChart?.setHoverIndex(index);
         },
         clearHighlightFromMap() {
             this.$refs.elevationChart?.clearHoverIndex();
+        },
+
+        /* -------------------------------------------------------- */
+        /*   SEGMENTO SELEZIONATO DAL GRAFICO                       */
+        /* -------------------------------------------------------- */
+        handleSegmentSelected({ start, end }) {
+            // blocca loop
+            this.elevationChartProps.settings.isProgrammaticMapMove = true;
+
+            this.elevationChartProps.settings.selectedSegment = { start, end };
+
+            // Disattiva follow
+            this.elevationChartProps.settings.followEnabled = false;
+
+            // FOCUS MAPPA SUL SEGMENTO
+            this.$refs.mapView.highlightSegment(start, end);
+
+            // reset dopo 300ms (fitBounds animato)
+            setTimeout(() => {
+                this.elevationChartProps.settings.isProgrammaticMapMove = false;
+            }, 300);
+        },
+
+        resetSelectedSegment() {
+            this.elevationChartProps.settings.selectedSegment = null;
+
+            // Riattiva follow
+            this.elevationChartProps.settings.followEnabled = true;
+
+            // Reset grafico
+            this.$refs.elevationChart.resetZoom();
+
+            // Reset mappa
+            this.$refs.mapView.clearHighlightedSegment();
+        },
+
+        disableFollowFromChart() {
+            this.elevationChartProps.settings.followEnabled = false;
+        },
+
+        enableFollowFromChart() {
+            this.elevationChartProps.settings.followEnabled = true;
         }
     },
 
     mounted() {
-        this.loadData();
+
+        // Get reportData from localStorage
+        const localStorage_reportData = localStorage.getItem('reportData');
+        const localStorage_reportFile = localStorage.getItem('reportFile');
+
+        if(localStorage_reportData && localStorage_reportFile) {
+            this.reportData = JSON.parse(localStorage_reportData);
+            this.reportData.file = new File([localStorage_reportFile], this.reportData.title +".gpx", {
+                type: "application/gpx+xml"
+            });
+        } else {
+            this.$router.push('/upload');
+        }
+
+        this.readGPXFile();
+        //this.loadData();
     }
 };
 </script>

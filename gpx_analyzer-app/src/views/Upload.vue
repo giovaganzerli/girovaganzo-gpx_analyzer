@@ -56,9 +56,7 @@
 
                     <form
                         id="gpx-form"
-                        @submit="checkForm"
-                        action="/report"
-                        method="post"
+                        @submit.prevent="generateReport"
                     >
 
                         <!-- First Content -->
@@ -293,7 +291,6 @@
                             </button>
                             <button type="submit"
                                     class="btn btn-primary"
-                                    @click="generateReport()"
                                     :disabled="stepper.currentIndex === 3 && !reportData.title.length"
                                     :hidden="stepper.currentIndex < 3">
                                 GENERATE  !
@@ -355,8 +352,8 @@ export default {
                 enableTime: true,
                 defaultHour: 8,
                 defaultMinute: 0,
-                minDate: 'today',
-                locale: 'Hindi', // locale for this instance only
+                minDate: new Date(new Date().setDate(new Date().getDate() + 1)),
+                time_24hr: true
             }
         }
     },
@@ -373,13 +370,15 @@ export default {
         },
         fileUpload(file) {
             this.reportData.file = file;
+            this.reportData.title = file[0].name.replace(".gpx", "");
         },
         selectMood() {
             this.reportData.setts.hours = '';
             this.reportData.setts.stages = '';
         },
         generateReport() {
-
+            localStorage.setItem('reportData', JSON.stringify(this.reportData));
+            this.$router.push('/report/new');
         }
     }
 }
