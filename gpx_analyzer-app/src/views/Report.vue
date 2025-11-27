@@ -75,8 +75,8 @@
                 <!-- Mappa -->
                 <div class="col-span-3">
                     <div class="right-sticky w-full]">
-                        <MapView
-                            ref="mapView"
+                        <Map
+                            ref="map"
                             :points="mapProps.trackPoints"
                             :enableFollow="elevationChartProps.settings.followEnabled"
                             :fixedZoom="14"
@@ -457,7 +457,7 @@
 
 <script>
 // COMPONENTI
-import MapView from "../components/MapView.vue";
+import Map from "../components/Map.vue";
 import ElevationChart from "../components/ElevationChart.vue";
 
 // SERVIZI
@@ -467,7 +467,7 @@ import gpxUtils from "../services/UtilitiesService.js";
 export default {
     name: "ReportView",
     components: {
-        MapView,
+        Map: Map,
         ElevationChart
     },
     data() {
@@ -558,14 +558,14 @@ export default {
         /* -------------------------------------------------------- */
         updateMapMarkerPosition(index) {
             if (this.elevationChartProps.settings.isProgrammaticMapMove) return;
-            this.$refs.mapView.updateMarker(index);
+            this.$refs.map.updateMarker(index);
         },
         centerMapOnPoint(index) {
-            this.$refs.mapView.centerMap(index);
+            this.$refs.map.centerMap(index);
         },
         resetMap() {
-            const map = this.$refs.mapView?.map;
-            const polyline = this.$refs.mapView?.polyline;
+            const map = this.$refs.map?.map;
+            const polyline = this.$refs.map?.polyline;
             if (!map || !polyline || this.elevationChartProps.settings.selectedSegment) return;
 
             map.fitBounds(polyline.getBounds(), {
@@ -598,7 +598,7 @@ export default {
             this.elevationChartProps.settings.followEnabled = false;
 
             // FOCUS MAPPA SUL SEGMENTO
-            this.$refs.mapView.highlightSegment(start, end);
+            this.$refs.map.highlightSegment(start, end);
 
             // reset dopo 300ms (fitBounds animato)
             setTimeout(() => {
@@ -616,7 +616,7 @@ export default {
             this.$refs.elevationChart.resetZoom();
 
             // Reset mappa
-            this.$refs.mapView.clearHighlightedSegment();
+            this.$refs.map.clearHighlightedSegment();
         },
 
         disableFollowFromChart() {

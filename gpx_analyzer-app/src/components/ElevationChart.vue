@@ -168,23 +168,34 @@ export default {
 
                 afterDraw(chart) {
                     const index = self.hoverIndex;
-                    if (index === null || index === undefined) return;
+                    if (index == null) return;
 
                     const meta = chart.getDatasetMeta(0);
-                    if (!meta || !meta.data[index]) return;
+                    if (!meta || !meta.data || !meta.data[index]) return;
 
                     const point = meta.data[index];
-                    const { x, y } = point.getProps(["x", "y"], true);
                     const { ctx, chartArea } = chart;
 
-                    const pointData = self.chart.data.datasets[0].data[index] || { x: 0, y: 0 };
+                    // -----------------------------------------------------
+                    // 1) Calcolo X esatta (usiamo la stessa del cursore)
+                    // -----------------------------------------------------
+                    const xScale = chart.scales.x;
+                    const xValue = self.cumDist[index];
+                    const x = xScale.getPixelForValue(xValue);   // ← X CORRETTA
 
-                    // Contenuto tooltip
-                    const altitude = (pointData.y ?? 0).toFixed(0);
-                    const slope    = (self.slopes[index] ?? 0).toFixed(1);
-                    const dist     = (self.cumDist[index] ?? 0).toFixed(2);
-                    const gain     = (self.cumGain[index] ?? 0).toFixed(0);
-                    const loss     = (self.cumLoss[index] ?? 0).toFixed(0);
+                    // -----------------------------------------------------
+                    // 2) Calcolo Y reale del punto (solo Y è del dataset)
+                    // -----------------------------------------------------
+                    const y = point.getProps(["y"], true).y;
+
+                    // -----------------------------------------------------
+                    // 3) Recupero dati per il tooltip
+                    // -----------------------------------------------------
+                    const altitude = (self.chart.data.datasets[0].data[index].y || 0).toFixed(0);
+                    const slope = (self.slopes[index] || 0).toFixed(1);
+                    const dist = (self.cumDist[index] || 0).toFixed(2);
+                    const gain = (self.cumGain[index] || 0).toFixed(0);
+                    const loss = (self.cumLoss[index] || 0).toFixed(0);
 
                     const lines = [
                         `Distance: ${dist} km`,
@@ -194,63 +205,68 @@ export default {
                         `Slope: ${slope} %`
                     ];
 
-                    // -----------------------------
-                    // MISURE TESTO
-                    // -----------------------------
+                    // -----------------------------------------------------
+                    // 4) Tooltip box (dimensioni)
+                    // -----------------------------------------------------
                     ctx.font = "12px sans-serif";
                     const padding = 8;
                     const lineHeight = 16;
 
-                    const textWidths = lines.map(l => ctx.measureText(l).width);
-                    const textWidth = Math.max(...textWidths);
-                    const boxWidth = textWidth + padding * 2;
+                    const textWidths = lines.map(t => ctx.measureText(t).width);
+                    const boxWidth = Math.max(...textWidths) + padding * 2;
                     const boxHeight = lines.length * lineHeight + padding * 2;
 
-                    // -----------------------------
-                    // CALCOLO POSIZIONE TOOLTIP
-                    // -----------------------------
+                    // -----------------------------------------------------
+                    // 5) Posizione tooltip (sopra o sotto)
+                    // -----------------------------------------------------
                     let boxX = x + 12;
                     let boxY = y - boxHeight - 12;
 
-                    // Se esce sopra → mettilo sotto
                     if (boxY < chartArea.top + 5) {
                         boxY = y + 12;
                     }
 
-                    // Limiti canvas
-                    const canvasWidth = chart.width;
-
-                    // Se esce a destra → sposta a sinistra
-                    if (boxX + boxWidth > canvasWidth - 5) {
+                    // limiti orizzontali
+                    if (boxX + boxWidth > chart.width - 5) {
                         boxX = x - boxWidth - 12;
                     }
-
-                    // Se esce a sinistra → clamp
                     if (boxX < 5) boxX = 5;
 
-                    // -----------------------------
-                    // DISEGNO BOX
-                    // -----------------------------
+                    // -----------------------------------------------------
+                    // 6) Disegno pallino blu sincronizzato
+                    // -----------------------------------------------------
+                    ctx.save();
+                    ctx.fillStyle = "#3b82f6"; // blu tailwind
+                    ctx.strokeStyle = "#fff";
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(x, y, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.restore();
+
+                    // -----------------------------------------------------
+                    // 7) Tooltip box
+                    // -----------------------------------------------------
                     ctx.save();
                     ctx.fillStyle = "rgba(0,0,0,0.75)";
                     ctx.strokeStyle = "rgba(255,255,255,0.35)";
                     ctx.lineWidth = 1;
-                    const radius = 6;
 
                     ctx.beginPath();
-                    ctx.roundRect(boxX, boxY, boxWidth, boxHeight, radius);
+                    ctx.roundRect(boxX, boxY, boxWidth, boxHeight, 6);
                     ctx.fill();
                     ctx.stroke();
 
-                    // -----------------------------
-                    // TESTO
-                    // -----------------------------
+                    // -----------------------------------------------------
+                    // 8) Testo del tooltip
+                    // -----------------------------------------------------
                     ctx.fillStyle = "#fff";
-                    let lineY = boxY + padding + 12;
+                    let textY = boxY + padding + 12;
 
                     lines.forEach(line => {
-                        ctx.fillText(line, boxX + padding, lineY);
-                        lineY += lineHeight;
+                        ctx.fillText(line, boxX + padding, textY);
+                        textY += lineHeight;
                     });
 
                     ctx.restore();
@@ -469,7 +485,7 @@ export default {
                 options: {
                     responsive: true,
                     maintainAspectRatio: true,
-                    interaction: { mode: "nearest", intersect: false },
+                    interaction: false,
                     plugins: {
                         legend: { display: false },
                         tooltip: {
@@ -491,35 +507,6 @@ export default {
                             title: { display: true, text: "Altitude (m)" }
                         }
                     },
-
-                    /* -----------------------------------
-                     * Hover → mappa
-                     ----------------------------------- */
-                    onHover: (event, chartElement) => {
-                        if (!chartElement.length) {
-                            this.hoverIndex = null;
-                            requestAnimationFrame(() => {
-                                this.chart.draw();
-                            });
-                            return;
-                        }
-
-                        const index = chartElement[0].index;
-
-                        // aggiorna indice per cursore verticale
-                        this.hoverIndex = index;
-
-                        // mantiene il comportamento esistente: aggiorna mappa
-                        this.onHoverPoint?.(index);
-                        this.onCenterMap?.(index);
-
-                        // ridisegna per far vedere subito la linea
-                        if (this.chart) {
-                            requestAnimationFrame(() => {
-                                this.chart.draw();
-                            });
-                        }
-                    }
                 },
                 plugins: [
                     fillPlugin,
@@ -536,23 +523,16 @@ export default {
         setHoverIndex(index) {
             if (!this.chart) return;
 
-            const chart = this.chart;
-
-            const meta = chart.getDatasetMeta(0);
+            const meta = this.chart.getDatasetMeta(0);
             if (!meta?.data?.[index]) return;
 
-            const point = meta.data[index];
-            const { x, y } = point.getProps(["x", "y"], true);
-
-            // Imposta l’elemento attivo (cursore + stile punto)
+            // Aggiorna solo l’indice
             this.hoverIndex = index;
-            chart.setActiveElements([{ datasetIndex: 0, index }], { x, y });
 
-            if (this.chart) {
-                requestAnimationFrame(() => {
-                    this.chart.draw();
-                });
-            }
+            // Ridisegna il layer overlay (cursor + tooltip)
+            requestAnimationFrame(() => {
+                this.chart.draw();
+            });
         },
         clearHoverIndex() {
             console.log('leave');
@@ -579,6 +559,63 @@ export default {
             this.$nextTick(() => {
                 this.buildChart();
             });
+        },
+
+        /* -----------------------------------
+         * Aggiorno la posizione del cursore
+         * ----------------------------------- */
+        updateCursorPosition(evt) {
+            const rect = this.$refs.chartCanvas.getBoundingClientRect();
+            const xPixel = evt.clientX - rect.left;
+
+            const scale = this.chart.scales.x;
+            const area = this.chart.chartArea;
+
+            if (!scale) return;
+
+            // fuori area → reset
+            if (xPixel < area.left || xPixel > area.right) {
+                this.hoverIndex = null;
+                this.onResetMap?.();
+                requestAnimationFrame(() => this.chart.draw());
+                return;
+            }
+
+            // pixel → valore km
+            const xValue = scale.getValueForPixel(xPixel);
+
+            // trova indice più vicino con ricerca binaria
+            const index = this.findClosestIndex(this.cumDist, xValue);
+
+            // se indice è uguale al precedente → NON ridisegnare
+            if (index === this.hoverIndex) return;
+
+            this.hoverIndex = index;
+
+            this.onHoverPoint?.(index);
+            this.onCenterMap?.(index);
+
+            requestAnimationFrame(() => this.chart.draw());
+        },
+
+        findClosestIndex(arr, target) {
+            let low = 0;
+            let high = arr.length - 1;
+
+            while (low < high) {
+                const mid = Math.floor((low + high) / 2);
+
+                if (arr[mid] < target) low = mid + 1;
+                else high = mid;
+            }
+
+            // arr[low] è il primo >= target
+            // scegli tra low e low-1 quello più vicino
+            if (low === 0) return 0;
+            if (low >= arr.length) return arr.length - 1;
+
+            return Math.abs(arr[low] - target) < Math.abs(arr[low-1] - target)
+                ? low : low - 1;
         },
 
         /* -----------------------------------
@@ -612,17 +649,20 @@ export default {
         handleMouseMove(evt) {
             if (!this.chart) return;
 
-            if (!this.isBrushing) return;
+            if (!this.isBrushing) {
+                this.updateCursorPosition(evt);
+            } else {
 
-            const rect = this.$refs.chartCanvas.getBoundingClientRect();
-            const x = evt.clientX - rect.left;
-            const area = this.chart.chartArea;
-            if (!area) return;
+                const rect = this.$refs.chartCanvas.getBoundingClientRect();
+                const x = evt.clientX - rect.left;
+                const area = this.chart.chartArea;
+                if (!area) return;
 
-            const clampedX = Math.min(Math.max(x, area.left), area.right);
-            this.brushEndX = clampedX;
+                const clampedX = Math.min(Math.max(x, area.left), area.right);
+                this.brushEndX = clampedX;
 
-            this.chart.draw();
+                this.chart.draw();
+            }
         },
 
         handleMouseUp(evt) {
