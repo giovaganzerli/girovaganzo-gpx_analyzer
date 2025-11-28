@@ -40,11 +40,11 @@
         <!-- Altimetria + Mappa -->
         <div class="section-wrapper">
             <div class="relative grid grid-cols-6 gap-4">
-                <div class="grid col-span-3 left-column gap-4">
+                <div class="col-span-3 left-column">
                     <!-- Altimetria -->
                     <div class="w-full p-6 bg-white rounded-xl border border-gray-200">
-                        <p class="flex justify-between mb-2 text-black text-lg font-bold">
-                            <span>Elevation Profile</span>
+                        <div class="flex justify-between mb-2 text-black text-lg font-bold">
+                            <p><span>Elevation Profile</span></p>
                             <div class="flex items-center gap-2">
                                 <label class="flex items-center gap-2 text-sm">
                                     <input type="checkbox" v-model="elevationChartProps.settings.followEnabled" />
@@ -57,7 +57,7 @@
                                     Reset segment
                                 </label>
                             </div>
-                        </p>
+                        </div>
                         <ElevationChart
                             ref="elevationChart"
                             :points="mapProps.trackPoints"
@@ -71,10 +71,15 @@
                         />
                     </div>
                     <!-- SURFACE TYPE -->
-                    <div class="w-full p-6 bg-white rounded-xl border border-gray-200">
+                    <div class="w-full p-6 mt-4 bg-white rounded-xl border border-gray-200">
                         <p class="flex justify-between mb-2 text-black text-lg font-bold">
                             <span>Surfaces Type</span>
                         </p>
+                        <SurfaceTimeline
+                            v-if="surfaceData.segments.length"
+                            :segments="surfaceData.segments"
+                            :totalDist="surfaceData.totalDist || gpxData.route.distance"
+                        />
                     </div>
                 </div>
                 <!-- Mappa -->
@@ -83,6 +88,7 @@
                         <Map
                             ref="map"
                             :points="mapProps.trackPoints"
+                            :cumDist="surfaceData.cumDist"
                             :enableFollow="elevationChartProps.settings.followEnabled"
                             :fixedZoom="14"
                             @hover-from-map="highlightChartFromMap"
@@ -464,16 +470,19 @@
 // COMPONENTI
 import Map from "../components/Map.vue";
 import ElevationChart from "../components/ElevationChart.vue";
+import SurfaceTimeline from "../components/SurfaceTimeline.vue";
 
 // SERVIZI
 import { getCountryList } from "../services/ViaggiareSicuriService.js";
 import gpxUtils from "../services/UtilitiesService.js";
+import { detectSurfaceSegments } from "../services/SurfaceService.js";
 
 export default {
     name: "ReportView",
     components: {
         Map: Map,
-        ElevationChart
+        ElevationChart,
+        SurfaceTimeline
     },
     data() {
         return {
@@ -529,7 +538,12 @@ export default {
             },
             generatedData: {
                 routeDescription: '--'
-            }
+            },
+            surfaceData: {
+                segments: [],
+                cumDist: [],
+                totalDist: 0
+            },
         };
     },
 
@@ -627,26 +641,40 @@ export default {
 
         enableFollowFromChart() {
             this.elevationChartProps.settings.followEnabled = true;
+        },
+
+        async analyzeSurfaces() {
+            if (!this.mapProps.trackPoints.length) return;
+
+            const { segments, cumDist, totalDist } = await detectSurfaceSegments(this.mapProps.trackPoints);
+
+            this.surfaceData.segments = segments;
+            this.surfaceData.cumDist = cumDist;
+            this.surfaceData.totalDist = totalDist;
         }
     },
 
     mounted() {
 
-        // Get reportData from localStorage
-        const localStorage_reportData = localStorage.getItem('reportData');
-        const localStorage_reportFile = localStorage.getItem('reportFile');
+        const init = async () => {
+            // Get reportData from localStorage
+            const localStorage_reportData = localStorage.getItem('reportData');
+            const localStorage_reportFile = localStorage.getItem('reportFile');
 
-        if(localStorage_reportData && localStorage_reportFile) {
-            this.reportData = JSON.parse(localStorage_reportData);
-            this.reportData.file = new File([localStorage_reportFile], this.reportData.title +".gpx", {
-                type: "application/gpx+xml"
-            });
-        } else {
-            this.$router.push('/upload');
-        }
+            if (localStorage_reportData && localStorage_reportFile) {
+                this.reportData = JSON.parse(localStorage_reportData);
+                this.reportData.file = new File([localStorage_reportFile], this.reportData.title + ".gpx", {
+                    type: "application/gpx+xml"
+                });
+            } else {
+                this.$router.push('/upload');
+            }
 
-        this.readGPXFile();
-        //this.loadData();
+            await this.readGPXFile();
+            await this.analyzeSurfaces();
+        };
+
+        init();
     }
 };
 </script>
