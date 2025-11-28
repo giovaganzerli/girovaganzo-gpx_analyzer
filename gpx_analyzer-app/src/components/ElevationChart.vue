@@ -547,7 +547,7 @@ export default {
             this.onSelectSegment?.({ start, end });
 
             // Disattiva il follow sulla mappa
-            this.disableFollow?.();
+            // this.disableFollow?.();
 
             // usa il plugin per zoomare
             this.$nextTick(() => {
@@ -624,9 +624,6 @@ export default {
         handleMouseDown(evt) {
             if (!this.chart) return;
 
-            // riabilito il follow sulla mappa
-            this.enableFollow?.();
-
             const rect = this.$refs.chartCanvas.getBoundingClientRect();
             const x = evt.clientX - rect.left;
             const y = evt.clientY - rect.top;
@@ -649,20 +646,17 @@ export default {
         handleMouseMove(evt) {
             if (!this.chart) return;
 
-            if (!this.isBrushing) {
-                this.updateCursorPosition(evt);
-            } else {
+            this.updateCursorPosition(evt);
 
-                const rect = this.$refs.chartCanvas.getBoundingClientRect();
-                const x = evt.clientX - rect.left;
-                const area = this.chart.chartArea;
-                if (!area) return;
+            const rect = this.$refs.chartCanvas.getBoundingClientRect();
+            const x = evt.clientX - rect.left;
+            const area = this.chart.chartArea;
+            if (!area) return;
 
-                const clampedX = Math.min(Math.max(x, area.left), area.right);
-                this.brushEndX = clampedX;
+            const clampedX = Math.min(Math.max(x, area.left), area.right);
+            this.brushEndX = clampedX;
 
-                this.chart.draw();
-            }
+            this.chart.draw();
         },
 
         handleMouseUp(evt) {

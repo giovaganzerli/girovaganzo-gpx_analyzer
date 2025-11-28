@@ -40,7 +40,7 @@
         <!-- Altimetria + Mappa -->
         <div class="section-wrapper">
             <div class="relative grid grid-cols-6 gap-4">
-                <div class="col-span-3 left-column">
+                <div class="grid col-span-3 left-column gap-4">
                     <!-- Altimetria -->
                     <div class="w-full p-6 bg-white rounded-xl border border-gray-200">
                         <p class="flex justify-between mb-2 text-black text-lg font-bold">
@@ -70,7 +70,12 @@
                             :enableFollow="enableFollowFromChart"
                         />
                     </div>
-                    <!-- OTHER BLOCK HERE -->
+                    <!-- SURFACE TYPE -->
+                    <div class="w-full p-6 bg-white rounded-xl border border-gray-200">
+                        <p class="flex justify-between mb-2 text-black text-lg font-bold">
+                            <span>Surfaces Type</span>
+                        </p>
+                    </div>
                 </div>
                 <!-- Mappa -->
                 <div class="col-span-3">
@@ -593,9 +598,6 @@ export default {
             this.elevationChartProps.settings.isProgrammaticMapMove = true;
 
             this.elevationChartProps.settings.selectedSegment = { start, end };
-
-            // Disattiva follow
-            this.elevationChartProps.settings.followEnabled = false;
 
             // FOCUS MAPPA SUL SEGMENTO
             this.$refs.map.highlightSegment(start, end);
