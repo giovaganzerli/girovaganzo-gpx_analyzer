@@ -13,21 +13,38 @@
 
 <script>
 import L from "leaflet";
+import { ref } from "vue"
 
 export default {
     name: "MapView",
     props: {
-        points: Array,
-        enableFollow: Boolean,  // follow solo da grafico → mappa
-        fixedZoom: Number       // zoom fisso se follow attivo
+        points: { type: Array, required: true },
+        enableFollow: Boolean,
+        onHover: Function,
+        onSegmentSelect: Function,
+        onSegmentReset: Function
     },
+
+    setup() {
+        const fixedZoom = ref(14);
+
+        return {
+            fixedZoom
+        }
+    },
+
     data() {
         return {
             map: null,
-            polyline: null,
-            movingMarker: null,
-            segmentPolyline: null
-        };
+            mapMarker: null,
+            gpxTrack: null,
+            selectedSegment: {
+                segment: null,
+                segmentStart: null,
+                segmentEnd: null,
+                segmentSelection: null
+            }
+        }
     },
 
     methods: {
@@ -60,42 +77,47 @@ export default {
                 ).addTo(this.map);
             }
 
-            if (this.polyline) this.map.removeLayer(this.polyline);
-            if (this.movingMarker) this.map.removeLayer(this.movingMarker);
+            if (this.gpxTrack) this.map.removeLayer(this.gpxTrack);
+            if (this.mapMarker) this.map.removeLayer(this.mapMarker);
 
             const latlngs = points.map(p => [p.lat, p.lon]);
 
-            this.polyline = L.polyline(latlngs, {
+            this.gpxTrack = L.polyline(latlngs, {
                 color: "#3300ff",
-                weight: 4
+                weight: 4,
+                interactive: true,
+                bubblingMouseEvents: false,
+                renderer: L.svg()
             }).addTo(this.map);
 
-            this.map.fitBounds(this.polyline.getBounds(), {
+            this.map.fitBounds(this.gpxTrack.getBounds(), {
                 padding: [50, 50]
             });
 
-            this.movingMarker = L.circleMarker(latlngs[0], {
+            this.mapMarker = L.circleMarker(latlngs[0], {
                 radius: 6,
                 color: "#ff0000",
                 fillColor: "#ff0000",
-                fillOpacity: 1
+                fillOpacity: 1,
+                interactive: false
             }).addTo(this.map);
 
             /* ------------------------------------------
              * Hover sulla traccia → highlight grafico
              * ------------------------------------------ */
-            this.polyline.on("mousemove", this.handleTrackHover);
-            this.polyline.on("mouseout", this.handleTrackLeave);
+            this.gpxTrack.on("mousemove", this.handleTrackHover);
+            this.gpxTrack.on("click", this.handleTrackClick);
         },
 
         /* ------------------------------------------
          * GRAFICO → MAPPA  (sposta marker)
          * ------------------------------------------ */
         updateMarker(index) {
-            if (!this.points || !this.points[index] || !this.movingMarker) return;
+            if (!this.points || !this.points[index] || !this.mapMarker) return;
 
             const p = this.points[index];
-            this.movingMarker.setLatLng([p.lat, p.lon]);
+            this.mapMarker.setLatLng([p.lat, p.lon]);
+            if(this.enableFollow) this.centerMap(index);
         },
 
         /* ------------------------------------------
@@ -136,26 +158,63 @@ export default {
             });
 
             // Aggiorna marker SOLO visivamente, NON follow/zoom
-            this.movingMarker.setLatLng([latlng.lat, latlng.lng]);
+            this.mapMarker.setLatLng([latlng.lat, latlng.lng]);
 
-            // Chiama highlight grafico
-            this.$emit("hover-from-map", nearestIndex);
+            // Emette evento su Report.vue
+            this.onHover?.(...[nearestIndex, 'Map']);
         },
 
-        /* ------------------------------------------
-         * MAPPA → GRAFICO (uscita hover)
-         * ------------------------------------------ */
-        handleTrackLeave() {
-            //this.$emit("hover-from-map-end");
+        handleTrackClick(e) {
+            if (!this.points || !this.points.length) return;
+
+            if(this.selectedSegment.segmentEnd) {
+                this.clearHighlightedSegment(false);
+            }
+
+            const latlng = e.latlng;
+
+            // Trova indice più vicino sulla traccia (come handleTrackHover)
+            let nearestIndex = 0;
+            let minDist = Infinity;
+
+            this.points.forEach((p, i) => {
+                const d =
+                    Math.pow(p.lat - latlng.lat, 2) +
+                    Math.pow(p.lon - latlng.lng, 2);
+                if (d < minDist) {
+                    minDist = d;
+                    nearestIndex = i;
+                }
+            });
+
+            // 1º CLICK → inizio
+            if (this.selectedSegment.segmentStart === null) {
+                this.selectedSegment.segmentStart = nearestIndex;
+
+                // evidenza il singolo punto cliccato
+                this.highlightSinglePoint(nearestIndex);
+
+                return;
+            }
+
+            // 2º CLICK → fine
+            this.selectedSegment.segmentEnd = nearestIndex;
+
+            // Normalizza (start < end)
+            const start = Math.min(this.selectedSegment.segmentStart, this.selectedSegment.segmentEnd);
+            const end = Math.max(this.selectedSegment.segmentStart, this.selectedSegment.segmentEnd);
+
+            // evidenzia il segmento completo
+            this.highlightSegment({ start, end });
         },
 
         /* ------------------------------------------
          * Evidenzia segmento selezionato + zoom mappa
          * ------------------------------------------ */
-        highlightSegment(start, end) {
-            if (!this.polyline) return;
+        highlightSegment(coords, bypass = false) {
+            if (!this.gpxTrack) return;
 
-            const segmentPoints = this.points.slice(start, end + 1);
+            const segmentPoints = this.points.slice(coords.start, coords.end + 1);
 
             // Evita errori: serve minimo 2 punti validi
             if (!segmentPoints || segmentPoints.length < 2) {
@@ -171,33 +230,65 @@ export default {
             }
 
             // Rimuovi precedente highlight
-            if (this.segmentLine) {
-                this.map.removeLayer(this.segmentLine);
+            if (this.selectedSegment.segment) {
+                this.map.removeLayer(this.selectedSegment.segment);
             }
 
-            this.segmentLine = L.polyline(segmentPoints.map(p => [p.lat, p.lon]), {
+            this.selectedSegment.segment = L.polyline(segmentPoints.map(p => [p.lat, p.lon]), {
                 color: "#f97316",
                 weight: 6,
-                opacity: 0.8
+                opacity: 0.8,
+                className: "!pointer-events-none"
             }).addTo(this.map);
 
             // Zoom sulla porzione
-            this.map.fitBounds(this.segmentLine.getBounds(), {
+            this.map.fitBounds(this.selectedSegment.segment.getBounds(), {
                 padding: [30, 30]
             });
+
+            // comunica al parent → Report.vue
+            if(!bypass) this.onSegmentSelect?.(...[coords, 'Map']);
         },
-        clearHighlightedSegment() {
-            if (this.segmentLine) {
-                this.map.removeLayer(this.segmentLine);
-                this.segmentLine = null;
+
+        clearHighlightedSegment(clearZoom = true) {
+            if (this.selectedSegment.segmentSelection) {
+                this.map.removeLayer(this.selectedSegment.segmentSelection);
+                this.selectedSegment.segmentSelection = null;
+            }
+
+            if (this.selectedSegment.segment) {
+                this.map.removeLayer(this.selectedSegment.segment);
+                this.selectedSegment.segment = null;
             }
 
             // Reset zoom to full track
-            if (this.polyline) {
-                this.map.fitBounds(this.polyline.getBounds(), {
+            if (this.gpxTrack && clearZoom) {
+                this.map.fitBounds(this.gpxTrack.getBounds(), {
                     padding: [50, 50]
                 });
             }
+
+            // reset selettore interno
+            this.selectedSegment.segmentStart = null;
+            this.selectedSegment.segmentEnd = null;
+        },
+
+        highlightSinglePoint(index) {
+            if (!this.points[index] || !this.map) return;
+
+            const p = this.points[index];
+
+            // rimuovi marker precedente
+            if (this.selectedSegment.segmentSelection) {
+                this.map.removeLayer(this.selectedSegment.segmentSelection);
+            }
+
+            this.selectedSegment.segmentSelection = L.circleMarker([p.lat, p.lon], {
+                radius: 7,
+                color: "#f97316",
+                fillColor: "#f97316",
+                fillOpacity: 0.9
+            }).addTo(this.map);
         }
     },
 

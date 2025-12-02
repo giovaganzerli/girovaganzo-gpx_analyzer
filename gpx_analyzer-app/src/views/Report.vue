@@ -8,7 +8,7 @@
             <div class="w-full mb-5">
                 <p class="text-black text-4xl font-black leading-tight tracking-[-0.033em]">
                     Analyzing: {{ reportData.title }}</p>
-                <p class="text-[#499c65] text-base font-normal leading-normal"><b>A little briefing:</b> {{ generatedData.routeDescription }}</p>
+                <p class="text-[#499c65] text-base font-normal leading-normal"><b>A little briefing:</b> {{ gpxData.generatedData.routeDescription }}</p>
             </div>
             <!-- Dati Percorso -->
             <div class="w-[calc(100%+40px)] col-span-2 flex flex-col gap-8 mx-[-20px]">
@@ -51,8 +51,8 @@
                                     Follow
                                 </label>
                                 <label
-                                    v-if="elevationChartProps.settings.selectedSegment"
-                                    @click="resetSelectedSegment"
+                                    v-if="selectedSegment.segment"
+                                    @click="resetSegmentSelected"
                                     class="px-3 py-1 bg-gray-200 text-sm rounded cursor-pointer">
                                     Reset segment
                                 </label>
@@ -61,24 +61,35 @@
                         <ElevationChart
                             ref="elevationChart"
                             :points="mapProps.trackPoints"
-                            :slopeRanges="elevationChartProps.slopeRanges"
-                            :onHoverPoint="updateMapMarkerPosition"
-                            :onCenterMap="centerMapOnPoint"
+                            :onHover="updateMarkersPosition"
                             :onResetMap="resetMap"
-                            :onSelectSegment="handleSegmentSelected"
+                            :onSegmentSelect="handleSegmentSelected"
                             :disableFollow="disableFollowFromChart"
                             :enableFollow="enableFollowFromChart"
                         />
                     </div>
                     <!-- SURFACE TYPE -->
                     <div class="w-full p-6 mt-4 bg-white rounded-xl border border-gray-200">
-                        <p class="flex justify-between mb-2 text-black text-lg font-bold">
-                            <span>Surfaces Type</span>
-                        </p>
+                        <div class="flex justify-between mb-2 text-black text-lg font-bold">
+                            <p><span>Surfaces Type</span></p>
+                            <div class="flex items-center gap-2">
+                                <label
+                                    v-if="selectedSegment.segment"
+                                    @click="resetSegmentSelected"
+                                    class="px-3 py-1 bg-gray-200 text-sm rounded cursor-pointer"
+                                >
+                                    Reset segment
+                                </label>
+                            </div>
+                        </div>
                         <SurfaceTimeline
-                            v-if="surfaceData.segments.length"
-                            :segments="surfaceData.segments"
-                            :totalDist="surfaceData.totalDist || gpxData.route.distance"
+                            ref="surfaceTimeline"
+                            v-if="gpxData.route.distance > 0"
+                            :points="mapProps.trackPoints"
+                            :totalDist="gpxData.route.distance"
+                            :onHover="updateMarkersPosition"
+                            :onResetMap="resetMap"
+                            :onSegmentSelect="handleSegmentSelected"
                         />
                     </div>
                 </div>
@@ -88,11 +99,10 @@
                         <Map
                             ref="map"
                             :points="mapProps.trackPoints"
-                            :cumDist="surfaceData.cumDist"
                             :enableFollow="elevationChartProps.settings.followEnabled"
-                            :fixedZoom="14"
-                            @hover-from-map="highlightChartFromMap"
-                            @hover-from-map-end="clearHighlightFromMap"
+                            :onHover="updateMarkersPosition"
+                            :onSegmentSelect="handleSegmentSelected"
+                            :onSegmentReset="resetSegmentSelected"
                         />
                     </div>
                 </div>
@@ -102,7 +112,7 @@
         <div class="section-wrapper w-boxed p-[20px]">
             <div class="layout-content-container flex flex-col w-full max-w-7xl flex-1 gap-8">
                 <!-- Informazioni Paese -->
-                <div class="flex flex-col col-span-1 md:col-span-2 gap-6">
+                <!--<div class="flex flex-col col-span-1 md:col-span-2 gap-6">
                     <div class="flex justify-between items-center">
                         <h3 class="text-black text-xl font-bold leading-tight tracking-[-0.015em]">Informazioni sui Paesi</h3>
                         <div>
@@ -332,9 +342,9 @@
                             </div>
                         </div>
                     </div>
-                </div>
+                </div>-->
                 <!-- Informazioni Turistiche -->
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <!--<div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div class="flex flex-col gap-6">
                         <h2 class="text-black dark:text-white text-xl font-bold leading-tight tracking-[-0.015em]">
                             Informazioni Turistiche</h2>
@@ -391,9 +401,9 @@
                             </div>
                         </div>
                     </div>
-                </div>
+                </div>-->
                 <!-- Attrezzatura Consigliata -->
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <!--<div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div class="flex flex-col gap-6">
                         <h2 class="text-black dark:text-white text-xl font-bold leading-tight tracking-[-0.015em] pt-5">
                             Attrezzatura Consigliata</h2>
@@ -454,7 +464,7 @@
                             </div>
                         </div>
                     </div>
-                </div>
+                </div>-->
             </div>
         </div>
     </section>
@@ -475,7 +485,6 @@ import SurfaceTimeline from "../components/SurfaceTimeline.vue";
 // SERVIZI
 import { getCountryList } from "../services/ViaggiareSicuriService.js";
 import gpxUtils from "../services/UtilitiesService.js";
-import { detectSurfaceSegments } from "../services/SurfaceService.js";
 
 export default {
     name: "ReportView",
@@ -500,9 +509,6 @@ export default {
                     hours: ''
                 }
             },
-            selectors: {
-                country: '0'
-            },
             gpxData: {
                 route: {
                     distance: 0,
@@ -517,40 +523,34 @@ export default {
                     hills: {
                         totals: 0
                     }
-                }
+                },
+                generatedData: {
+                    routeDescription: '--'
+                },
             },
             mapProps: {
                 trackPoints: []
             },
             elevationChartProps: {
-                slopeRanges: [
-                    { label: "Soft climb", min: 0, max: 5, color: "#22c55e" },
-                    { label: "Climb", min: 5, max: 12, color: "#16a34a" },
-                    { label: "Hard climb", min: 12, max: 999, color: "#7e22ce" },
-                    { label: "Descent", min: -10, max: 0, color: "#ef4444" },
-                    { label: "Steep descent", min: -999, max: -10, color: "#1e3a8a" }
-                ],
                 settings: {
                     followEnabled: true,
-                    selectedSegment: null,
-                    isProgrammaticMapMove: false
+                    isProgrammaticMapMove: false,
                 }
             },
-            generatedData: {
-                routeDescription: '--'
+            surfaceTimelineProps: {
+                settings: {
+                    selectedSegment: null,
+                    isProgrammaticSurfaceZoom: false
+                }
             },
-            surfaceData: {
-                segments: [],
-                cumDist: [],
-                totalDist: 0
-            },
-        };
+            selectedSegment: {
+                segment: false,
+                selectedFrom: false
+            }
+        }
     },
 
     methods: {
-        async loadData() {
-            this.result = await getCountryList();
-        },
 
         /* ---------------------------------------------- */
         /*  GPX UPLOAD                                    */
@@ -575,64 +575,74 @@ export default {
         /* -------------------------------------------------------- */
         /*   GRAFICO → MAPPA                                        */
         /* -------------------------------------------------------- */
-        updateMapMarkerPosition(index) {
+        updateMarkersPosition(index, hoverEl) {
             if (this.elevationChartProps.settings.isProgrammaticMapMove) return;
-            this.$refs.map.updateMarker(index);
+
+            if(hoverEl === 'ElevationChart') {
+                this.$refs.map.updateMarker(index);
+                this.$refs.surfaceTimeline.updateMarker(index);
+            } else if(hoverEl === 'SurfaceTimeline') {
+                this.$refs.map.updateMarker(index);
+                this.$refs.elevationChart?.updateMarker(index);
+            } else if(hoverEl === 'Map') {
+                this.$refs.elevationChart?.updateMarker(index);
+                this.$refs.surfaceTimeline.updateMarker(index);
+            }
         },
-        centerMapOnPoint(index) {
-            this.$refs.map.centerMap(index);
-        },
+
         resetMap() {
             const map = this.$refs.map?.map;
-            const polyline = this.$refs.map?.polyline;
-            if (!map || !polyline || this.elevationChartProps.settings.selectedSegment) return;
+            const gpxTrack = this.$refs.map?.gpxTrack;
+            const selectedSegment = this.$refs.map?.selectedSegment.segment;
+            if (!map || !gpxTrack || !this.elevationChartProps.settings.followEnabled) return;
 
-            map.fitBounds(polyline.getBounds(), {
-                padding: [50, 50],
-                animate: true
-            });
+            if(selectedSegment) {
+                // Zoom sulla porzione
+                map.fitBounds(selectedSegment.getBounds(), {
+                    padding: [30, 30]
+                });
+            } else {
+                map.fitBounds(gpxTrack.getBounds(), {
+                    padding: [50, 50],
+                    animate: true
+                });
+            }
         },
 
         /* -------------------------------------------------------- */
-        /*   MAPPA → GRAFICO (hover sulla traccia)                  */
+        /*   SELEZIONE DEL SEGMENTO                                 */
         /* -------------------------------------------------------- */
-        highlightChartFromMap(index) {
-            if(this.elevationChartProps.settings.isProgrammaticMapMove) return
-            this.$refs.elevationChart?.setHoverIndex(index);
-        },
-        clearHighlightFromMap() {
-            this.$refs.elevationChart?.clearHoverIndex();
-        },
 
-        /* -------------------------------------------------------- */
-        /*   SEGMENTO SELEZIONATO DAL GRAFICO                       */
-        /* -------------------------------------------------------- */
-        handleSegmentSelected({ start, end }) {
-            // blocca loop
-            this.elevationChartProps.settings.isProgrammaticMapMove = true;
+        handleSegmentSelected(coords, handler) {
+            this.selectedSegment.segment = coords;
 
-            this.elevationChartProps.settings.selectedSegment = { start, end };
+            if(handler === 'elevationChart') {
 
-            // FOCUS MAPPA SUL SEGMENTO
-            this.$refs.map.highlightSegment(start, end);
+                // FOCUS MAPPA SUL SEGMENTO
+                this.$refs.map.highlightSegment(this.selectedSegment.segment, true);
+                //this.$refs.surfaceTimeline.highlightSegment(this.selectedSegment.segment);
 
-            // reset dopo 300ms (fitBounds animato)
-            setTimeout(() => {
-                this.elevationChartProps.settings.isProgrammaticMapMove = false;
-            }, 300);
+            } else if(handler === 'surfaceTimeline') {
+
+                //this.$refs.map.highlightSegment(this.selectedSegment.segment, true);
+
+            } else if(handler === 'Map') {
+
+                this.$refs.elevationChart.highlightSegment(this.selectedSegment.segment, true);
+            }
         },
 
-        resetSelectedSegment() {
-            this.elevationChartProps.settings.selectedSegment = null;
-
-            // Riattiva follow
-            this.elevationChartProps.settings.followEnabled = true;
+        resetSegmentSelected() {
+            this.selectedSegment.segment = false;
 
             // Reset grafico
-            this.$refs.elevationChart.resetZoom();
+            this.$refs.elevationChart.clearHighlightedSegment();
 
             // Reset mappa
-            this.$refs.map.clearHighlightedSegment();
+            this.$refs.map.clearHighlightedSegment(this.$refs.map.enableFollow);
+
+            // Reset timeline
+            this.$refs.surfaceTimeline.clearHighlightedSegment();
         },
 
         disableFollowFromChart() {
@@ -641,16 +651,6 @@ export default {
 
         enableFollowFromChart() {
             this.elevationChartProps.settings.followEnabled = true;
-        },
-
-        async analyzeSurfaces() {
-            if (!this.mapProps.trackPoints.length) return;
-
-            const { segments, cumDist, totalDist } = await detectSurfaceSegments(this.mapProps.trackPoints);
-
-            this.surfaceData.segments = segments;
-            this.surfaceData.cumDist = cumDist;
-            this.surfaceData.totalDist = totalDist;
         }
     },
 
@@ -671,7 +671,6 @@ export default {
             }
 
             await this.readGPXFile();
-            await this.analyzeSurfaces();
         };
 
         init();

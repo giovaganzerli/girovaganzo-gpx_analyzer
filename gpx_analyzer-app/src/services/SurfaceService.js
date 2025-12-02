@@ -40,23 +40,23 @@ function classifySurface(tags = {}) {
     }
 
     // ciclabile
-    else if (highway === "cycleway") {
+    if (highway === "cycleway") {
         surfaceType = "bike_path";
     }
 
-    else if (surface === "asphalt" || surface === "concrete" || surface === "paved") {
+    if (surface === "asphalt" || surface === "concrete" || surface === "paved") {
         surfaceType = "paved";
     }
 
-    else if (surface === "paving_stones" || surface === "sett" || surface === "cobblestone") {
+    if (surface === "paving_stones" || surface === "sett" || surface === "cobblestone") {
         surfaceType = "cobbled";
     }
 
-    else if (surface === 'gravel' || surface === "compacted" || surface === "fine_gravel") {
+    if (surface === 'gravel' || surface === "compacted" || surface === "fine_gravel") {
         surfaceType = "hard_packed";
     }
 
-    else if (surface === "dirt" || surface === "ground") {
+    if (surface === "dirt" || surface === "ground") {
         surfaceType = "unpaved";
     }
 
@@ -67,20 +67,13 @@ function classifySurface(tags = {}) {
 // ------------------------------
 // 3. Colore per ogni tipo di superficie
 // ------------------------------
-function getSurfaceColor(_type) {
+function getSurfaceColor(_type, _surfacesLegend) {
 
     const type = _type.split("#")[0];
     const grade = Number(_type.split("#")[1]);
+    const surfacesLegend = _surfacesLegend.find(el => el.value === type);
 
-    switch (type) {
-        case "paved":            return darkenColor("#365ec3", 100-grade*25);
-        case "cobbled":          return darkenColor("#6b7280", 100-grade*25);
-        case "hard_packed":      return darkenColor("#fbbf24", 100-grade*25);
-        case "unpaved":          return darkenColor("#4daa17", 100-grade*25);
-        case "single_track":     return darkenColor("#c034e8", 100-grade*25);
-        case "bike_path":        return darkenColor("#e4354e", 100-grade*25);
-        default:                 return darkenColor("#1a1a1b", 100-grade*25);
-    }
+    return darkenColor(surfacesLegend.color, 100-grade*25);
 }
 
 function darkenColor(color, percent) {
@@ -164,11 +157,10 @@ function buildCumDist(points) {
 //   ...
 // ]
 //
-export async function detectSurfaceSegments(points) {
-    if (!points || points.length < 2) return [];
+export async function detectSurfaceSegments(points, totalDist, options = {}) {
+    if (!points || points.length < 2 || !totalDist) return [];
 
     const cumDist = buildCumDist(points);
-    const totalDist = cumDist[cumDist.length - 1];
 
     // per non stressare Overpass: max ~50 richieste
     const maxSamples = 50;
@@ -209,7 +201,7 @@ export async function detectSurfaceSegments(points) {
                 from: segStartDist,
                 to: cumDist[i],
                 type: currentType,
-                color: getSurfaceColor(currentType)
+                color: getSurfaceColor(currentType, options.surfacesLegend)
             });
             segStartDist = cumDist[i];
             currentType = surfaceByIndex[i];
@@ -221,8 +213,8 @@ export async function detectSurfaceSegments(points) {
         from: segStartDist,
         to: totalDist,
         type: currentType,
-        color: getSurfaceColor(currentType)
+        color: getSurfaceColor(currentType, options.surfacesLegend)
     });
 
-    return { segments, cumDist, totalDist };
+    return segments;
 }

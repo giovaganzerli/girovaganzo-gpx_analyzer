@@ -34,35 +34,53 @@
 
 
 <script>
+import { ref } from 'vue';
 import { Chart } from "chart.js/auto";
 
 export default {
     name: "ElevationChart",
     props: {
         points: { type: Array, required: true },
-        slopeRanges: { type: Array, required: true },
-        onHoverPoint: Function,
-        onCenterMap: Function,
+        onHover: Function,
         onResetMap: Function,
-        onSelectSegment: Function,
+        onSegmentSelect: Function,
         disableFollow: Function,
         enableFollow: Function
     },
+
+    setup() {
+        const slopeRanges = ref([
+            { label: "Soft climb", min: 0, max: 5, color: "#22c55e" },
+            { label: "Climb", min: 5, max: 12, color: "#16a34a" },
+            { label: "Hard climb", min: 12, max: 999, color: "#7e22ce" },
+            { label: "Descent", min: -10, max: 0, color: "#ef4444" },
+            { label: "Steep descent", min: -999, max: -10, color: "#1e3a8a" }
+        ]);
+
+        return {
+            slopeRanges
+        }
+    },
+
     data() {
         return {
             chart: null,
-            hoverIndex: null,
-            slopes: [],
-            cumDist: [],
-            cumGain: [],
-            cumLoss: [],
-            slopeKm: [],
-            isBrushing: false,
-            brushStartX: null,
-            brushEndX: null,
-            zoomRange: null
-        };
+            chartMarker: null,
+            routeData: {
+                slopes: [],
+                slopeKm: [],
+                cumDist: [],
+                cumGain: [],
+                cumLoss: []
+            },
+            selectedSegment: {
+                segmentStart: null,
+                segmentEnd: null,
+                isSelecting: false
+            }
+        }
     },
+
     methods: {
 
         /* -----------------------------------
@@ -135,7 +153,7 @@ export default {
                 id: "verticalCursorPlugin",
 
                 afterDatasetsDraw(chart) {
-                    const index = self.hoverIndex;
+                    const index = self.chartMarker;
                     if (index === null || index === undefined) return;
 
                     const meta = chart.getDatasetMeta(0);
@@ -167,7 +185,7 @@ export default {
                 id: "customTooltipPlugin",
 
                 afterDraw(chart) {
-                    const index = self.hoverIndex;
+                    const index = self.chartMarker;
                     if (index == null) return;
 
                     const meta = chart.getDatasetMeta(0);
@@ -180,7 +198,7 @@ export default {
                     // 1) Calcolo X esatta (usiamo la stessa del cursore)
                     // -----------------------------------------------------
                     const xScale = chart.scales.x;
-                    const xValue = self.cumDist[index];
+                    const xValue = self.routeData.cumDist[index];
                     const x = xScale.getPixelForValue(xValue);   // ← X CORRETTA
 
                     // -----------------------------------------------------
@@ -192,10 +210,10 @@ export default {
                     // 3) Recupero dati per il tooltip
                     // -----------------------------------------------------
                     const altitude = (self.chart.data.datasets[0].data[index].y || 0).toFixed(0);
-                    const slope = (self.slopes[index] || 0).toFixed(1);
-                    const dist = (self.cumDist[index] || 0).toFixed(2);
-                    const gain = (self.cumGain[index] || 0).toFixed(0);
-                    const loss = (self.cumLoss[index] || 0).toFixed(0);
+                    const slope = (self.routeData.slopes[index] || 0).toFixed(1);
+                    const dist = (self.routeData.cumDist[index] || 0).toFixed(2);
+                    const gain = (self.routeData.cumGain[index] || 0).toFixed(0);
+                    const loss = (self.routeData.cumLoss[index] || 0).toFixed(0);
 
                     const lines = [
                         `Distance: ${dist} km`,
@@ -277,21 +295,21 @@ export default {
         /* -----------------------------------
          * Plugin: Selezione (brush) sul grafico
          * ----------------------------------- */
-        createBrushSelectionPlugin() {
+        createSegmentSelectionPlugin() {
             const self = this;
 
             return {
-                id: "brushSelectionPlugin",
+                id: "segmentSelectionPlugin",
 
                 // Disegna overlay di selezione
                 afterDraw(chart) {
-                    if (!self.isBrushing || self.brushStartX == null || self.brushEndX == null) {
+                    if (!self.selectedSegment.isSelecting || self.selectedSegment.segmentStart == null || self.selectedSegment.segmentEnd == null) {
                         return;
                     }
 
                     const { ctx, chartArea } = chart;
-                    const x1 = self.brushStartX;
-                    const x2 = self.brushEndX;
+                    const x1 = self.selectedSegment.segmentStart;
+                    const x2 = self.selectedSegment.segmentEnd;
 
                     const left = Math.max(Math.min(x1, x2), chartArea.left);
                     const right = Math.min(Math.max(x1, x2), chartArea.right);
@@ -322,7 +340,7 @@ export default {
          * Utility legenda
          ----------------------------------- */
         getKmForRange(range) {
-            const item = this.slopeKm.find(
+            const item = this.routeData.slopeKm.find(
                 r => r.min === range.min && r.max === range.max
             );
             return item ? item.km : 0;
@@ -411,42 +429,53 @@ export default {
                 cumLoss.push(loss);
             }
 
-            this.slopes = slopes;
-            this.cumDist = cumDist;
-            this.cumGain = cumGain;
-            this.cumLoss = cumLoss;
-            this.slopeKm = slopeKm;
+            this.routeData.slopes = slopes;
+            this.routeData.cumDist = cumDist;
+            this.routeData.cumGain = cumGain;
+            this.routeData.cumLoss = cumLoss;
+            this.routeData.slopeKm = slopeKm;
 
             let startX = 0;
             let endX = cumDist[cumDist.length - 1];
 
-            if(this.brushStartX && this.brushEndX) {
+            if(this.selectedSegment.segmentStart !== null && this.selectedSegment.segmentEnd !== null) {
 
-                const minX = Math.min(this.brushStartX, this.brushEndX);
-                const maxX = Math.max(this.brushStartX, this.brushEndX);
+                if(this.selectedSegment.isSelecting) {
 
-                if (maxX - minX < 5) return;
+                    startX = cumDist[this.selectedSegment.segmentStart];
+                    endX = cumDist[this.selectedSegment.segmentEnd];
 
-                const xScale = this.chart.scales.x;
+                } else {
 
-                const startVal = xScale.getValueForPixel(minX);
-                const endVal = xScale.getValueForPixel(maxX);
+                    let startIndex, endIndex;
 
-                let startIndex = this.cumDist.findIndex(v => v >= startVal);
-                let endIndex = this.cumDist.length - 1;
+                    const xScale = this.chart?.scales?.x;
+                    if (xScale) {
+                        const minPx = Math.min(this.selectedSegment.segmentStart, this.selectedSegment.segmentEnd);
+                        const maxPx = Math.max(this.selectedSegment.segmentStart, this.selectedSegment.segmentEnd);
 
-                for (let i = this.cumDist.length - 1; i >= 0; i--) {
-                    if (this.cumDist[i] <= endVal) {
-                        endIndex = i;
-                        break;
+                        const startVal = xScale.getValueForPixel(minPx);
+                        const endVal = xScale.getValueForPixel(maxPx);
+
+                        startIndex = cumDist.findIndex(v => v >= startVal);
+
+                        endIndex = cumDist.length - 1;
+                        for (let i = cumDist.length - 1; i >= 0; i--) {
+                            if (cumDist[i] <= endVal) {
+                                endIndex = i;
+                                break;
+                            }
+                        }
+
+                        startX = cumDist[startIndex];
+                        endX = cumDist[endIndex];
                     }
                 }
 
-                startX = this.cumDist[startIndex];
-                endX = this.cumDist[endIndex];
-
-                this.brushStartX = null;
-                this.brushEndX = null;
+                // Reset → evita loop nella buildChart
+                this.selectedSegment.segmentStart = null;
+                this.selectedSegment.segmentEnd = null;
+                this.selectedSegment.isSelecting = false;
             }
 
             if (this.chart) this.chart.destroy();
@@ -454,7 +483,7 @@ export default {
             const fillPlugin = this.createFillClimbPlugin();
             const verticalCursorPlugin = this.createVerticalCursorPlugin();
             const tooltipCursorPlugin = this.createTooltipCursorPlugin();
-            const brushSelectionPlugin = this.createBrushSelectionPlugin();
+            const segmentSelectionPlugin = this.createSegmentSelectionPlugin();
 
             const ctx = this.$refs.chartCanvas.getContext("2d");
 
@@ -476,7 +505,7 @@ export default {
                             segment: {
                                 borderColor: ctx => {
                                     const i = ctx.p1DataIndex;
-                                    return this.getSlopeRangeColor(this.slopes[i] ?? 0);
+                                    return this.getSlopeRangeColor(this.routeData.slopes[i] ?? 0);
                                 }
                             }
                         }
@@ -512,7 +541,7 @@ export default {
                     fillPlugin,
                     verticalCursorPlugin,
                     tooltipCursorPlugin,
-                    brushSelectionPlugin
+                    segmentSelectionPlugin
                 ]
             });
         },
@@ -520,34 +549,34 @@ export default {
         /** -----------------------------------
          * Hover proveniente dalla MAPPA
          * ----------------------------------- */
-        setHoverIndex(index) {
+        updateMarker(index) {
             if (!this.chart) return;
 
             const meta = this.chart.getDatasetMeta(0);
             if (!meta?.data?.[index]) return;
 
             // Aggiorna solo l’indice
-            this.hoverIndex = index;
+            this.chartMarker = index;
 
             // Ridisegna il layer overlay (cursor + tooltip)
             requestAnimationFrame(() => {
                 this.chart.draw();
             });
         },
-        clearHoverIndex() {
-            console.log('leave');
-        },
 
         /* -----------------------------------
          * Gestione segmento selezionato
          * ----------------------------------- */
-        handleSegmentSelection(start, end) {
+        highlightSegment(coords, bypass) {
+
+            if(this.selectedSegment.segmentStart === null || this.selectedSegment.segmentEnd === null) {
+                this.selectedSegment.segmentStart = coords.start;
+                this.selectedSegment.segmentEnd = coords.end;
+                this.selectedSegment.isSelecting = true;
+            }
 
             // callback verso il padre
-            this.onSelectSegment?.({ start, end });
-
-            // Disattiva il follow sulla mappa
-            // this.disableFollow?.();
+            if(!bypass) this.onSegmentSelect?.(...[coords, 'elevationChart']);
 
             // usa il plugin per zoomare
             this.$nextTick(() => {
@@ -555,7 +584,7 @@ export default {
             });
         },
 
-        resetZoom() {
+        clearHighlightedSegment() {
             this.$nextTick(() => {
                 this.buildChart();
             });
@@ -575,7 +604,7 @@ export default {
 
             // fuori area → reset
             if (xPixel < area.left || xPixel > area.right) {
-                this.hoverIndex = null;
+                this.chartMarker = null;
                 this.onResetMap?.();
                 requestAnimationFrame(() => this.chart.draw());
                 return;
@@ -585,15 +614,14 @@ export default {
             const xValue = scale.getValueForPixel(xPixel);
 
             // trova indice più vicino con ricerca binaria
-            const index = this.findClosestIndex(this.cumDist, xValue);
+            const index = this.findClosestIndex(this.routeData.cumDist, xValue);
 
             // se indice è uguale al precedente → NON ridisegnare
-            if (index === this.hoverIndex) return;
+            if (index === this.chartMarker) return;
 
-            this.hoverIndex = index;
+            this.chartMarker = index;
 
-            this.onHoverPoint?.(index);
-            this.onCenterMap?.(index);
+            this.onHover?.(...[index, 'ElevationChart']);
 
             requestAnimationFrame(() => this.chart.draw());
         },
@@ -632,13 +660,13 @@ export default {
 
             // dentro area del grafico?
             if (x < area.left || x > area.right || y < area.top || y > area.bottom) {
-                this.isBrushing = false;
+                this.selectedSegment.isSelecting = false;
                 return;
             }
 
-            this.isBrushing = true;
-            this.brushStartX = x;
-            this.brushEndX = x;
+            this.selectedSegment.isSelecting = true;
+            this.selectedSegment.segmentStart = x;
+            this.selectedSegment.segmentEnd = x;
 
             this.chart.draw();
         },
@@ -654,22 +682,22 @@ export default {
             if (!area) return;
 
             const clampedX = Math.min(Math.max(x, area.left), area.right);
-            this.brushEndX = clampedX;
+            this.selectedSegment.segmentEnd = clampedX;
 
             this.chart.draw();
         },
 
         handleMouseUp(evt) {
             if (!this.chart) return;
-            if (!this.isBrushing) return;
+            if (!this.selectedSegment.isSelecting) return;
 
             const area = this.chart.chartArea;
             if (!area) return;
 
-            this.isBrushing = false;
+            this.selectedSegment.isSelecting = false;
 
-            const minX = Math.min(this.brushStartX, this.brushEndX);
-            const maxX = Math.max(this.brushStartX, this.brushEndX);
+            const minX = Math.min(this.selectedSegment.segmentStart, this.selectedSegment.segmentEnd);
+            const maxX = Math.max(this.selectedSegment.segmentStart, this.selectedSegment.segmentEnd);
 
             if (maxX - minX < 5) return;
 
@@ -678,28 +706,30 @@ export default {
             const startVal = xScale.getValueForPixel(minX);
             const endVal = xScale.getValueForPixel(maxX);
 
-            let startIndex = this.cumDist.findIndex(v => v >= startVal);
-            let endIndex = this.cumDist.length - 1;
+            let startIndex = this.routeData.cumDist.findIndex(v => v >= startVal);
+            let endIndex = this.routeData.cumDist.length - 1;
 
-            for (let i = this.cumDist.length - 1; i >= 0; i--) {
-                if (this.cumDist[i] <= endVal) {
+            for (let i = this.routeData.cumDist.length - 1; i >= 0; i--) {
+                if (this.routeData.cumDist[i] <= endVal) {
                     endIndex = i;
                     break;
                 }
             }
 
-            this.handleSegmentSelection(startIndex, endIndex);
-
+            this.highlightSegment({
+                start: startIndex,
+                end: endIndex
+            });
         },
 
         handleMouseLeave(evt) {
 
             if (!this.chart) return;
 
-            this.hoverIndex = null;
-            this.isBrushing = false;
-            this.brushStartX = null;
-            this.brushEndX = null;
+            this.chartMarker = null;
+            this.selectedSegment.isSelecting = false;
+            this.selectedSegment.segmentStart = null;
+            this.selectedSegment.segmentEnd = null;
 
             this.onResetMap?.();
 
